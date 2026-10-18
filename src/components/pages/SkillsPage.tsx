@@ -13,6 +13,8 @@ interface SkillsPageProps {
   onOpenProfile: () => void;
   onApply?: (schemeId: string) => void;
   onNavigate?: (mode: ChannelMode) => void;
+  /** Opens the Learning Hub with a course built for this job role. */
+  onLearn?: (topic: string, context?: string) => void;
 }
 
 /** Segmented switch shared by the two halves of "Skills & Opportunities". */
@@ -37,7 +39,7 @@ export const OpportunityTabs: React.FC<{ current: 'skills' | 'learning' | 'enter
     </div>
   ) : null;
 
-export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, ...props }) => {
+export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, ...props }) => {
   const sectors = useMemo(() => ['All', ...Array.from(new Set(NSQF_COURSES.map((c) => c.sector.split(/[&/(]/)[0].trim())))], []);
   const [sector, setSector] = useState('All');
   const courses = NSQF_COURSES.filter((c) => sector === 'All' || c.sector.startsWith(sector));
@@ -104,14 +106,29 @@ export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, ...props }) 
                 <div className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-saffron-600" aria-hidden /><dt className="sr-only">Duration</dt><dd>{c.durationHours}</dd></div>
               </dl>
               {c.prerequisites && <p className="mt-3 rounded-xl bg-ivory p-3 text-xs text-navy"><strong>Before you join:</strong> {c.prerequisites}</p>}
-              <a
-                href="https://www.skillindiadigital.gov.in"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-semibold text-teal-600 hover:underline"
-              >
-                Find a centre on Skill India <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              </a>
+              <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-4">
+                {onLearn && (
+                  <button
+                    onClick={() =>
+                      onLearn(
+                        `${c.jobRole} basics`,
+                        `NSQF ${c.nsqfLevel} job role ${c.jobRole} (${c.qpCode}) in the ${c.sector} sector. Typical duration ${c.durationHours}. Prerequisites: ${c.prerequisites || 'not specified'}. Certifying body: ${c.certifyingBody || 'Sector Skill Council'}.`
+                      )
+                    }
+                    className="btn btn-primary btn-sm"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden /> Learn the basics with Guru
+                  </button>
+                )}
+                <a
+                  href="https://www.skillindiadigital.gov.in"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-teal-600 hover:underline"
+                >
+                  Find a centre <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </a>
+              </div>
             </li>
           ))}
         </ul>

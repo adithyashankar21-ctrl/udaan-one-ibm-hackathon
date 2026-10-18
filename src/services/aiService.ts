@@ -1,5 +1,6 @@
 import { BeneficiaryProfile, ChatMessage, LivelihoodAnalysis } from '../types';
 import { announceApplyIntent } from './autofillApi';
+import { announceLearnIntent } from './learnApi';
 
 let currentAudio: HTMLAudioElement | null = null;
 let cachedVoices: SpeechSynthesisVoice[] = [];
@@ -348,6 +349,11 @@ export const aiService = {
       if (data.applyIntent) {
         const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content;
         announceApplyIntent({ schemeId: data.applyIntent.schemeId || null, channel: channelKind(channel), text: lastUser });
+      }
+      // "Teach me…" requests: the assistant teaches in the conversation and offers the full course
+      if (data.learnIntent) {
+        const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content;
+        announceLearnIntent({ courseId: data.learnIntent.courseId, topic: data.learnIntent.topic, question: lastUser, channel: channelKind(channel) });
       }
       return data.reply;
     } catch (err: any) {

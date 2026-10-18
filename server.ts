@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createAutofillRouter, autofillErrorHandler } from './server/autofill/router';
 import { createLearnRouter } from './server/learn/router';
+import { detectLearnIntent } from './server/learn/intent';
 import { detectIntentLocal } from './server/autofill/schemes';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
 
@@ -56,6 +57,17 @@ function isTransientError(err: any): boolean {
   if (/\b(400|401|402|403)\b|credits are depleted|API key not valid|PERMISSION_DENIED/i.test(msg)) return false;
   return /\b(503|429|500)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(msg);
 }
+
+const LEARN_COURSE_NAMES: Record<string, string> = {
+  python: 'Python programming',
+  c: 'C programming',
+  java: 'Java programming',
+  web: 'web development with HTML, CSS and JavaScript',
+  sql: 'databases and SQL',
+  dsa: 'data structures and algorithms',
+  'digital-basics': 'computer and digital basics',
+  career: 'job readiness, spoken English and interviews',
+};
 
 // Models whose free-tier daily quota ran out are skipped for a while instead of retried on every request
 const exhaustedUntil = new Map<string, number>();
@@ -140,7 +152,19 @@ app.post('/api/ai/chat', async (req, res) => {
   const localIntent = detectIntentLocal(String(lastUserText));
   const applyIntent = localIntent.wantsToApply ? { schemeId: localIntent.schemeId } : null;
   const applyNote = applyIntent
-    ? `\n6. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one sentence, tell them UDAAN ONE's Smart Apply can fill the application for them from their documents and answers, and that a "Continue to Smart Apply" button is now on the screen. Never say an application has been submitted.`
+    ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one sentence, tell them UDAAN ONE's Smart Apply can fill the application for them from their documents and answers, and that a "Continue to Smart Apply" button is now on the screen. Never say an application has been submitted.`
+    : '';
+
+  // Learning requests ("teach me Python", "I want to learn tailoring") are taught here and handed to the Learning Hub
+  const learn = applyIntent ? null : detectLearnIntent(String(lastUserText));
+  const learnIntent = learn?.wantsToLearn ? { courseId: learn.courseId, topic: learn.topic } : null;
+  const teachNote = learnIntent
+    ? `\n7. TEACHING MODE — the person wants to learn${learnIntent.courseId ? ` (${LEARN_COURSE_NAMES[learnIntent.courseId] || learnIntent.courseId})` : learnIntent.topic ? ` about "${learnIntent.topic}"` : ''}. Act as a patient teacher, not a scheme counsellor:
+   - Teach the actual concept now: explain the core idea simply with one everyday Indian example. If they asked a specific question, answer it fully and correctly.
+   - For programming, describe code in words (it is spoken aloud) — e.g. "write for, then a name, then in range of five". Never read symbols one by one.
+   - If they want to learn a trade or job skill, also say what the training needs: who can join (typical education or age), roughly how long it takes, where to train (ITI, PMKVY / Skill India centre, PM Vishwakarma for traditional artisans) and the certificate they can earn. Say durations and eligibility vary by course and centre.
+   - In one sentence, say an "Open in Learning Hub" button is now on the screen for full step-by-step lessons, practice and quizzes.
+   - In teaching mode you may use up to 6 short sentences.`
     : '';
 
   const systemInstruction = `You are "UDAAN ONE Mitra" (उड़ान वन मित्र), a friendly, knowledgeable AI guide that helps citizens — especially Scheduled Caste (SC) communities — understand PM-AJAY (Pradhan Mantri Anusuchit Jaati Abhyuday Yojana) and related skilling, employment and enterprise schemes. You are an assistant, not a government official, and you cannot approve, verify or submit anything.
@@ -169,7 +193,8 @@ RULES:
    - For local offices, name the type of office (District Social Welfare Office, State SC Development Corporation, nearest Skill India centre, CSC) rather than inventing addresses or phone numbers. The UDAAN ONE helpline is 1800-11-2529.
 3. PERSONALISE: if the person shares their name, trade or district, use it and give 1–2 concrete next steps for their situation.
 4. LANGUAGE: reply entirely in the language the person uses (Tamil, Hindi, Telugu, Kannada, Malayalam, English, or another Indian language), in its native script, in simple everyday words.
-5. VOICE STYLE: 2 to 4 short, warm sentences. No bullet lists, no markdown, no emojis — this will be spoken aloud. End with one helpful next step (for example, offering to prepare their Kaushal Patra roadmap).${applyNote}
+5. VOICE STYLE: 2 to 4 short, warm sentences. No bullet lists, no markdown, no emojis — this will be spoken aloud. End with one helpful next step (for example, offering to prepare their Kaushal Patra roadmap).
+6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${teachNote}
 `;
 
   // Sanitize and format multi-turn contents for Gemini
@@ -235,7 +260,7 @@ RULES:
       { retryBusy: false, timeoutMs: 9000 }
     );
     const replyText = response.text?.trim();
-    if (replyText) return res.json({ reply: replyText, applyIntent });
+    if (replyText) return res.json({ reply: replyText, applyIntent, learnIntent });
   } catch (err: any) {
     lastError = err;
   }
@@ -244,7 +269,7 @@ RULES:
   console.error('All Gemini chat models failed, sending offline notice:', lastError?.message);
   const lastUserMsg = rawMessages && rawMessages.length > 0 ? rawMessages[rawMessages.length - 1].content : '';
   const reply = offlineReply(language, lastUserMsg);
-  res.json({ reply, fallback: true, applyIntent });
+  res.json({ reply, fallback: true, applyIntent, learnIntent });
 });
 
 // Comprehensive Livelihood & NSQF Gap Mapping endpoint

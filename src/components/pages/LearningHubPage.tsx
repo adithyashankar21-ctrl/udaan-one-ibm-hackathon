@@ -12,15 +12,27 @@ import {
   ExternalLink,
   GraduationCap,
   ListTree,
+  Loader2,
   MessageCircleQuestion,
+  Mic,
+  MicOff,
+  Trash2,
+  Wand2,
+  Wrench,
+  Clock,
+  Target,
+  Briefcase,
+  Award,
   Play,
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
 import type { ChannelMode, Language } from '../../types';
 import { LEARNING_TRACKS, type LearningCourse, type LearningModule, subtopicCount, subtopicKey } from '../../data/learningTracks';
-import { fetchLesson, type Lesson } from '../../services/learnApi';
-import { DoubtSolver, LessonView } from '../learning/TutorBlocks';
+import { buildCourse, fetchLesson, type Lesson, type LearningEntry } from '../../services/learnApi';
+import { DoubtSolver, LessonView, lessonScript } from '../learning/TutorBlocks';
+import { useSpeaker } from '../learning/useSpeaker';
+import { useDictation } from '../smartapply/media';
 import { OpportunityTabs } from './SkillsPage';
 import { Meter, Skeleton } from '../ui/kit';
 
@@ -39,6 +51,24 @@ function saveProgress(s: Set<string>) {
     localStorage.setItem(STORE, JSON.stringify([...s]));
   } catch {}
 }
+
+const CUSTOM_STORE = 'udaan_custom_courses_v1';
+function loadCustom(): LearningCourse[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(CUSTOM_STORE) || '[]');
+    return Array.isArray(list) ? list.filter((c) => c?.id && Array.isArray(c.modules)) : [];
+  } catch {
+    return [];
+  }
+}
+function saveCustom(list: LearningCourse[]) {
+  try {
+    localStorage.setItem(CUSTOM_STORE, JSON.stringify(list.slice(0, 12)));
+  } catch {}
+}
+
+/** A request that reads like a specific question goes straight to the doubt solver. */
+const looksLikeQuestion = (q?: string) => Boolean(q && (/\?/.test(q) || /\b(what|why|how does|how do|difference|write|error|explain|example)\b/i.test(q)) && q.length > 12);
 
 const ACCENT: Record<LearningCourse['accent'], { bg: string; text: string; ring: string; grad: string }> = {
   saffron: { bg: 'bg-saffron-50', text: 'text-saffron-600', ring: 'ring-saffron/40', grad: 'from-saffron to-[#f7c777]' },
@@ -191,7 +221,7 @@ const ProgressRing: React.FC<{ value: number; max: number }> = ({ value, max }) 
   );
 };
 
-const CourseCard: React.FC<{ course: LearningCourse; done: number; index: number; onOpen: () => void }> = ({ course, done, index, onOpen }) => {
+const CourseCard: React.FC<{ course: LearningCourse; done: number; index: number; onOpen: () => void; onRemove?: () => void }> = ({ course, done, index, onOpen, onRemove }) => {
   const a = ACCENT[course.accent];
   const total = subtopicCount(course);
   return (
@@ -200,6 +230,7 @@ const CourseCard: React.FC<{ course: LearningCourse; done: number; index: number
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.45, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
+      className="relative"
     >
       <motion.button
         whileHover={{ y: -6 }}
@@ -228,6 +259,15 @@ const CourseCard: React.FC<{ course: LearningCourse; done: number; index: number
           </span>
         </div>
       </motion.button>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${course.title}`}
+          className="absolute bottom-4 right-28 grid h-8 w-8 place-items-center rounded-full bg-white text-muted shadow-card hover:text-coral-600"
+        >
+          <Trash2 className="h-4 w-4" aria-hidden />
+        </button>
+      )}
     </motion.li>
   );
 };
@@ -315,6 +355,61 @@ const LessonSkeleton: React.FC<{ subtopic: string }> = ({ subtopic }) => (
   </div>
 );
 
+const RequirementsCard: React.FC<{ course: LearningCourse }> = ({ course }) => {
+  const r = course.requirements;
+  const [open, setOpen] = useState(true);
+  if (!r) return null;
+  const rows: Array<{ icon: React.ElementType; label: string; items: string[] }> = [
+    { icon: GraduationCap, label: 'Before you start', items: r.prerequisites || [] },
+    { icon: Wrench, label: 'You will need', items: r.materials || [] },
+    { icon: Clock, label: 'Time needed', items: r.duration ? [r.duration] : [] },
+    { icon: Target, label: 'You will be able to', items: r.outcomes || [] },
+    { icon: Briefcase, label: 'Where it can lead', items: r.careers || [] },
+  ].filter((row) => row.items.length);
+  return (
+    <section className="card overflow-hidden" aria-labelledby={`req-${course.id}`}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left hover:bg-ivory">
+        <span id={`req-${course.id}`} className="flex items-center gap-2 font-bold text-navy">
+          <ListTree className="h-5 w-5 text-teal-600" aria-hidden /> Training requirements & outcomes
+        </span>
+        <ChevronDown className={`h-4 w-4 text-muted transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="grid gap-4 border-t border-line px-5 py-4 sm:grid-cols-2 lg:grid-cols-3">
+              {rows.map((row, i) => (
+                <motion.div key={row.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted">
+                    <row.icon className="h-3.5 w-3.5" aria-hidden /> {row.label}
+                  </p>
+                  <ul className="mt-1.5 space-y-1 text-sm text-navy/85">
+                    {row.items.map((it) => (
+                      <li key={it} className="flex gap-2">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-saffron" aria-hidden />
+                        <span>{it}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              ))}
+            </div>
+            {r.formalTraining && (
+              <p className="flex gap-2 border-t border-line bg-teal-50 px-5 py-3 text-sm text-navy/85">
+                <Award className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" aria-hidden />
+                <span>
+                  <span className="font-bold text-navy">Certified training: </span>
+                  {r.formalTraining}
+                </span>
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+};
+
 const CourseWorkspace: React.FC<{
   course: LearningCourse;
   langConfig: Language;
@@ -322,14 +417,16 @@ const CourseWorkspace: React.FC<{
   onComplete: (key: string) => void;
   onBack: () => void;
   startWithDoubt: boolean;
-}> = ({ course, langConfig, progress, onComplete, onBack, startWithDoubt }) => {
+  initialQuestion?: { text: string; nonce: number; speak?: boolean } | null;
+}> = ({ course, langConfig, progress, onComplete, onBack, startWithDoubt, initialQuestion }) => {
   const first = { module: course.modules[0], subtopic: course.modules[0].subtopics[0] };
   const [selected, setSelected] = useState<Selection | null>(startWithDoubt ? null : first);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'lesson' | 'doubt'>(startWithDoubt ? 'doubt' : 'lesson');
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number; speak?: boolean } | null>(initialQuestion || null);
+  const speaker = useSpeaker(langConfig.speechLocale);
   const [showCurriculum, setShowCurriculum] = useState(false);
   const cache = useRef(new Map<string, Lesson>());
   const mainRef = useRef<HTMLDivElement>(null);
@@ -371,6 +468,7 @@ const CourseWorkspace: React.FC<{
   }, [selected, tab, load]);
 
   const choose = (s: Selection) => {
+    speaker.stop();
     setSelected(s);
     setTab('lesson');
     setShowCurriculum(false);
@@ -408,13 +506,15 @@ const CourseWorkspace: React.FC<{
           {course.glyph}
         </motion.span>
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">{LEARNING_TRACKS.find((t) => t.courses.includes(course))?.title} · {course.level}</p>
+          <p className="eyebrow">{course.trackTitle || LEARNING_TRACKS.find((t) => t.courses.includes(course))?.title} · {course.level}</p>
           <h1 className="mt-1 text-2xl font-extrabold text-navy sm:text-3xl">{course.title}</h1>
           <div className="mt-3 max-w-md">
             <Meter value={done} max={total} label={`${done} of ${total} topics complete`} tone="green" />
           </div>
         </div>
       </header>
+
+      <RequirementsCard course={course} />
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <aside className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
@@ -440,6 +540,7 @@ const CourseWorkspace: React.FC<{
                 role="tab"
                 aria-selected={tab === t.id}
                 onClick={() => {
+                  speaker.stop();
                   setTab(t.id);
                   if (t.id === 'lesson' && !selected) setSelected(first);
                 }}
@@ -475,6 +576,8 @@ const CourseWorkspace: React.FC<{
                   lesson={lesson}
                   codeLanguage={course.codeLanguage}
                   onAsk={askAbout}
+                  listening={speaker.speakingId === 'lesson'}
+                  onListen={speaker.supported ? () => (speaker.speakingId === 'lesson' ? speaker.stop() : speaker.speak('lesson', lessonScript(lesson))) : undefined}
                   onQuizDone={(score, totalQ) => {
                     if (score === totalQ) onComplete(subtopicKey(course.id, selected.module.id, selected.subtopic));
                   }}
@@ -530,11 +633,132 @@ const CourseWorkspace: React.FC<{
   );
 };
 
+/* ── learn anything: Guru designs a course for any topic ─────────────── */
+
+const TOPIC_IDEAS = ['Electrician basics', 'Tailoring & stitching', 'Mobile phone repair', 'Tally & GST accounting', 'Spoken Hindi to English', 'Class 10 maths', 'Beauty & wellness', 'Solar panel installation'];
+
+const BUILD_STAGES = ['Understanding what you want to learn', 'Checking training requirements', 'Designing modules and lessons', 'Adding practice and outcomes'];
+
+const BuildingCard: React.FC<{ topic: string }> = ({ topic }) => {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setStage((s) => Math.min(s + 1, BUILD_STAGES.length - 1)), 2500);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl border border-line bg-white p-5" role="status" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <motion.span animate={{ rotate: [0, 15, -15, 0] }} transition={{ repeat: Infinity, duration: 1.6 }} className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-saffron to-teal text-navy">
+          <Wand2 className="h-5 w-5" aria-hidden />
+        </motion.span>
+        <p className="font-bold text-navy">Guru is building your course on “{topic}”…</p>
+      </div>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2">
+        {BUILD_STAGES.map((label, i) => (
+          <li key={label} className={`flex items-center gap-2 text-sm ${i <= stage ? 'text-navy' : 'text-muted/60'}`}>
+            {i < stage ? <CheckCircle2 className="h-4 w-4 text-green" aria-hidden /> : i === stage ? <Loader2 className="h-4 w-4 animate-spin text-saffron-600" aria-hidden /> : <Circle className="h-4 w-4 text-line" aria-hidden />}
+            {label}
+          </li>
+        ))}
+      </ol>
+    </motion.div>
+  );
+};
+
+const LearnAnything: React.FC<{ speechLocale: string; building: string | null; error: string | null; onBuild: (topic: string) => void }> = ({ speechLocale, building, error, onBuild }) => {
+  const [topic, setTopic] = useState('');
+  const dictation = useDictation(speechLocale, (t) => setTopic(t));
+  return (
+    <section id="learn-anything" aria-labelledby="learn-anything-h" className="scroll-mt-28 rounded-[24px] border border-line bg-gradient-to-br from-saffron-50 via-white to-teal-50 p-5 sm:p-7">
+      <p className="eyebrow flex items-center gap-2">
+        <Wand2 className="h-4 w-4" aria-hidden /> Learn anything
+      </p>
+      <h2 id="learn-anything-h" className="mt-1 text-2xl font-extrabold text-navy sm:text-3xl">
+        What do you want to learn?
+      </h2>
+      <p className="mt-1 max-w-2xl text-muted">
+        A trade, a school subject, a language or a job skill — Guru designs a full course for you, with training requirements, lessons, practice and doubt solving.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (topic.trim().length > 1) onBuild(topic.trim());
+        }}
+        className="mt-5 flex flex-col gap-2 sm:flex-row"
+      >
+        <label htmlFor="learn-topic" className="sr-only">
+          Topic to learn
+        </label>
+        <div className="flex flex-1 items-center gap-2 rounded-2xl border border-line bg-white px-3 focus-within:border-teal focus-within:ring-4 focus-within:ring-teal/15">
+          <input
+            id="learn-topic"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="e.g. electrician basics, tailoring, Excel, Class 10 science…"
+            className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-navy outline-none placeholder:text-muted/70"
+          />
+          {dictation.supported && (
+            <button
+              type="button"
+              onClick={dictation.listening ? dictation.stop : dictation.start}
+              aria-pressed={dictation.listening}
+              aria-label={dictation.listening ? 'Stop dictation' : 'Say what you want to learn'}
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition ${dictation.listening ? 'animate-pulse bg-coral-50 text-coral-600' : 'text-navy hover:bg-ivory'}`}
+            >
+              {dictation.listening ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}
+            </button>
+          )}
+        </div>
+        <motion.button whileTap={{ scale: 0.97 }} type="submit" disabled={!!building || topic.trim().length < 2} className="btn btn-accent btn-lg">
+          {building ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <Wand2 className="h-5 w-5" aria-hidden />} Build my course
+        </motion.button>
+      </form>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {TOPIC_IDEAS.map((idea, i) => (
+          <motion.button
+            key={idea}
+            initial={{ opacity: 0, y: 6 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: i * 0.04 }}
+            disabled={!!building}
+            onClick={() => onBuild(idea)}
+            className="rounded-full border border-line bg-white px-3 py-1.5 text-sm text-navy transition hover:-translate-y-0.5 hover:border-saffron disabled:opacity-60"
+          >
+            {idea}
+          </motion.button>
+        ))}
+      </div>
+      <AnimatePresence>
+        {building && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-5 overflow-hidden">
+            <BuildingCard topic={building} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {error && !building && (
+        <p role="alert" className="mt-4 rounded-xl border border-coral/30 bg-coral-50 px-4 py-3 text-sm text-coral-600">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+};
+
 /* ── page ─────────────────────────────────────────────────────────────── */
 
-export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mode: ChannelMode) => void }> = ({ langConfig, onNavigate }) => {
+export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mode: ChannelMode) => void; entry?: LearningEntry | null; onEntryHandled?: () => void }> = ({
+  langConfig,
+  onNavigate,
+  entry,
+  onEntryHandled,
+}) => {
   const [progress, setProgress] = useState<Set<string>>(loadProgress);
-  const [open, setOpen] = useState<{ courseId: string; doubt: boolean } | null>(null);
+  const [open, setOpen] = useState<{ courseId: string; doubt: boolean; question?: { text: string; nonce: number; speak?: boolean } | null } | null>(null);
+  const [custom, setCustom] = useState<LearningCourse[]>(loadCustom);
+  const [building, setBuilding] = useState<string | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const language = langConfig.name || 'English';
   const reduce = typeof document !== 'undefined' && document.documentElement.dataset.motion === 'reduce';
 
   const complete = useCallback((key: string) => {
@@ -547,13 +771,61 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
     });
   }, []);
 
-  const course = open ? LEARNING_TRACKS.flatMap((t) => t.courses).find((c) => c.id === open.courseId) : undefined;
+  const allCourses = useMemo(() => [...custom, ...LEARNING_TRACKS.flatMap((t) => t.courses)], [custom]);
+  const course = open ? allCourses.find((c) => c.id === open.courseId) : undefined;
   const doneIn = (c: LearningCourse) => c.modules.reduce((n, mod) => n + mod.subtopics.filter((s) => progress.has(subtopicKey(c.id, mod.id, s))).length, 0);
 
-  const go = (courseId: string, doubt = false) => {
-    setOpen({ courseId, doubt });
+  const go = (courseId: string, doubt = false, question?: { text: string; nonce: number; speak?: boolean } | null) => {
+    setOpen({ courseId, doubt, question });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const build = useCallback(
+    async (topic: string, context?: string, question?: string) => {
+      setBuilding(topic);
+      setBuildError(null);
+      setOpen(null);
+      try {
+        const c = await buildCourse({ topic, language, context });
+        setCustom((list) => {
+          const next = [c, ...list.filter((x) => x.id !== c.id)];
+          saveCustom(next);
+          return next;
+        });
+        setOpen({ courseId: c.id, doubt: looksLikeQuestion(question), question: looksLikeQuestion(question) ? { text: question!, nonce: Date.now() } : null });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e: any) {
+        setBuildError(e?.message || 'Guru could not build that course. Please try again.');
+      } finally {
+        setBuilding(null);
+      }
+    },
+    [language]
+  );
+
+  const removeCustom = (id: string) =>
+    setCustom((list) => {
+      const next = list.filter((c) => c.id !== id);
+      saveCustom(next);
+      return next;
+    });
+
+  // Hand-off from the voice assistant, chat, helpline or a Skills course card
+  const handled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!entry || handled.current === entry.nonce) return;
+    handled.current = entry.nonce;
+    onEntryHandled?.();
+    const ask = looksLikeQuestion(entry.question);
+    const spoken = entry.channel === 'voice';
+    if (entry.courseId && allCourses.some((c) => c.id === entry.courseId)) {
+      go(entry.courseId, ask, ask ? { text: entry.question!, nonce: entry.nonce, speak: spoken } : null);
+    } else if (entry.topic) {
+      build(entry.topic, entry.context, entry.question);
+      setTimeout(() => document.getElementById('learn-anything')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.nonce]);
 
   return (
     <MotionConfig reducedMotion={reduce ? 'always' : 'user'}>
@@ -569,6 +841,7 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
                 onComplete={complete}
                 onBack={() => setOpen(null)}
                 startWithDoubt={open!.doubt}
+                initialQuestion={open!.question}
               />
             </motion.div>
           ) : (
@@ -598,6 +871,26 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
                   </motion.li>
                 ))}
               </motion.ul>
+
+              <LearnAnything speechLocale={langConfig.speechLocale} building={building} error={buildError} onBuild={(t) => build(t)} />
+
+              {custom.length > 0 && (
+                <section aria-labelledby="track-custom" className="space-y-5">
+                  <div>
+                    <p className="eyebrow flex items-center gap-2">
+                      <Wand2 className="h-4 w-4" aria-hidden /> Made for you
+                    </p>
+                    <h2 id="track-custom" className="mt-1 text-2xl font-extrabold text-navy sm:text-3xl">
+                      Your courses
+                    </h2>
+                  </div>
+                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {custom.map((c, i) => (
+                      <CourseCard key={c.id} course={c} index={i} done={doneIn(c)} onOpen={() => go(c.id)} onRemove={() => removeCustom(c.id)} />
+                    ))}
+                  </ul>
+                </section>
+              )}
 
               {LEARNING_TRACKS.map((track) => (
                 <section key={track.id} aria-labelledby={`track-${track.id}`} className="space-y-5">

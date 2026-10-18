@@ -1,5 +1,7 @@
 /** Client for the Learning Hub AI tutor (`/api/learn`). */
 
+import type { CourseRequirements, LearningCourse } from '../data/learningTracks';
+
 export interface LessonSection {
   heading: string;
   body: string;
@@ -63,3 +65,68 @@ export const askDoubt = (p: {
   language: string;
   history?: Array<{ question: string; answer: string }>;
 }) => post<{ solution: DoubtSolution }>('doubt', p).then((r) => r.solution);
+
+/* ── custom courses: Guru builds a curriculum for any topic ─────────────── */
+
+interface CurriculumResponse {
+  title: string;
+  description: string;
+  level: LearningCourse['level'];
+  codeLanguage?: string;
+  modules: Array<{ title: string; subtopics: string[] }>;
+  requirements: CourseRequirements;
+}
+
+const ACCENTS: LearningCourse['accent'][] = ['saffron', 'teal', 'green', 'coral', 'navy'];
+
+const slug = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40) || 'course';
+
+function glyphFor(title: string) {
+  const words = title.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
+  const g = words.length > 1 ? words[0][0] + words[1][0] : (words[0] || 'AI').slice(0, 2);
+  return g.toUpperCase();
+}
+
+export async function buildCourse(p: { topic: string; language: string; context?: string }): Promise<LearningCourse> {
+  const { course: c } = await post<{ course: CurriculumResponse }>('curriculum', p);
+  const id = `custom-${slug(p.topic)}`;
+  const code = c.codeLanguage && c.codeLanguage !== 'none' ? (c.codeLanguage as LearningCourse['codeLanguage']) : undefined;
+  return {
+    id,
+    title: c.title,
+    short: c.title,
+    description: c.description,
+    level: (['Beginner', 'Beginner → Intermediate', 'Intermediate'] as const).includes(c.level as any) ? c.level : 'Beginner',
+    codeLanguage: code,
+    accent: ACCENTS[[...id].reduce((n, ch) => n + ch.charCodeAt(0), 0) % ACCENTS.length],
+    glyph: glyphFor(c.title),
+    custom: true,
+    trackTitle: 'Made for you by Guru',
+    requirements: c.requirements,
+    modules: c.modules.map((m, i) => ({ id: `${id}-m${i + 1}`, title: m.title, subtopics: m.subtopics })),
+  };
+}
+
+/* ── hand-off from any assistant channel to the Learning Hub ──────────── */
+
+export const LEARN_INTENT_EVENT = 'udaan:learn-intent';
+
+export interface LearningEntry {
+  courseId?: string | null;
+  topic?: string | null;
+  /** Extra context for a custom course, e.g. a job role's requirements. */
+  context?: string;
+  /** Open the doubt solver with this question. */
+  question?: string;
+  channel?: string;
+  nonce: number;
+}
+
+export function announceLearnIntent(detail: Omit<LearningEntry, 'nonce'>) {
+  window.dispatchEvent(new CustomEvent<LearningEntry>(LEARN_INTENT_EVENT, { detail: { ...detail, nonce: Date.now() } }));
+}

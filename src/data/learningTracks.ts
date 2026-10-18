@@ -9,6 +9,16 @@ export interface LearningModule {
   subtopics: string[];
 }
 
+export interface CourseRequirements {
+  prerequisites: string[];
+  materials?: string[];
+  duration: string;
+  outcomes: string[];
+  /** Formal, certified route in India (described generally — details vary by centre). */
+  formalTraining?: string;
+  careers?: string[];
+}
+
 export interface LearningCourse {
   id: string;
   title: string;
@@ -20,6 +30,10 @@ export interface LearningCourse {
   accent: 'saffron' | 'teal' | 'navy' | 'green' | 'coral';
   glyph: string;
   modules: LearningModule[];
+  requirements?: CourseRequirements;
+  /** Built by the AI tutor for a topic the learner asked for. */
+  custom?: boolean;
+  trackTitle?: string;
   /** Where to take the matching certified course. */
   certification?: { label: string; url: string };
 }
@@ -43,6 +57,14 @@ const PYTHON: LearningCourse = {
   accent: 'saffron',
   glyph: 'py',
   certification: { label: 'Skill India Digital Hub', url: 'https://www.skillindiadigital.gov.in/' },
+  requirements: {
+    prerequisites: ['Basic reading in English or Hindi', 'Comfort using a computer or smartphone — no maths beyond Class 8 needed'],
+    materials: ['Any computer, or a phone with a browser — code runs right here'],
+    duration: 'About 8–10 weeks at 1 hour a day',
+    outcomes: ['Write programs with variables, loops, functions and files', 'Solve problems by breaking them into steps', 'Build small automation and data projects'],
+    formalTraining: 'Certified Python courses are offered through Skill India Digital Hub and NIELIT; NPTEL/SWAYAM runs free university courses. Eligibility and dates vary by course.',
+    careers: ['Junior Python developer', 'Data entry and automation assistant', 'Data analyst trainee', 'Freelance scripting'],
+  },
   modules: [
     m('py-basics', 'Getting started', ['What is programming and why Python', 'Your first program: print()', 'Comments and code readability', 'How Python runs your code']),
     m('py-vars', 'Variables & data types', ['Variables and naming rules', 'Numbers: int and float', 'Strings and string methods', 'Booleans and None', 'Type conversion (casting)', 'f-strings and formatting output']),
@@ -67,6 +89,14 @@ const C_LANG: LearningCourse = {
   codeLanguage: 'c',
   accent: 'navy',
   glyph: 'C',
+  requirements: {
+    prerequisites: ['Class 10 maths', 'Basic computer use'],
+    materials: ['A computer with a C compiler (GCC), or a free online compiler'],
+    duration: 'About 6–8 weeks at 1 hour a day',
+    outcomes: ['Understand memory, pointers and how programs run', 'Write structured programs in C', 'Strong base for embedded systems and engineering exams'],
+    formalTraining: 'C is part of ITI COPA, polytechnic and B.Tech/BCA syllabi; NIELIT and NPTEL offer certified courses.',
+    careers: ['Embedded systems trainee', 'Foundation for software engineering roles'],
+  },
   modules: [
     m('c-basics', 'Basics', ['Structure of a C program', 'Compiling and running', 'Data types and variables', 'printf and scanf']),
     m('c-flow', 'Control flow', ['if-else and switch', 'for, while and do-while loops', 'break and continue']),
@@ -85,6 +115,14 @@ const JAVA: LearningCourse = {
   codeLanguage: 'java',
   accent: 'coral',
   glyph: 'J',
+  requirements: {
+    prerequisites: ['Basic programming idea helps (Python or C)', 'Class 10 maths'],
+    materials: ['A computer with the JDK installed, or an online Java compiler'],
+    duration: 'About 8–10 weeks at 1 hour a day',
+    outcomes: ['Write object-oriented programs', 'Use collections and handle exceptions', 'Base for Android and enterprise development'],
+    formalTraining: 'Offered by NIELIT, NPTEL/SWAYAM and many Skill India partners; part of most BCA/B.Tech courses.',
+    careers: ['Junior Java developer', 'Android app developer trainee', 'Software tester'],
+  },
   modules: [
     m('java-basics', 'Basics', ['JDK, JVM and your first program', 'Variables and data types', 'Operators and input with Scanner']),
     m('java-flow', 'Control flow', ['Conditions', 'Loops', 'Arrays']),
@@ -102,6 +140,14 @@ const WEB: LearningCourse = {
   codeLanguage: 'javascript',
   accent: 'teal',
   glyph: '</>',
+  requirements: {
+    prerequisites: ['Basic computer and internet use', 'No prior coding needed'],
+    materials: ['A computer with a browser and a free code editor (such as VS Code)'],
+    duration: 'About 8–12 weeks at 1 hour a day',
+    outcomes: ['Build and publish responsive websites', 'Add interactivity with JavaScript', 'Create a portfolio for jobs or freelancing'],
+    formalTraining: 'Web developer job roles are available under Skill India (IT-ITeS Sector Skill Council); ITI COPA also covers web basics.',
+    careers: ['Front-end developer trainee', 'Freelance website maker', 'Web content and support roles'],
+  },
   modules: [
     m('web-html', 'HTML', ['How the web works', 'HTML elements and structure', 'Links, images and lists', 'Forms and inputs', 'Semantic HTML and accessibility']),
     m('web-css', 'CSS', ['Selectors and the box model', 'Colours, fonts and spacing', 'Flexbox', 'CSS Grid', 'Responsive design for mobile']),
@@ -118,6 +164,14 @@ const SQL: LearningCourse = {
   codeLanguage: 'sql',
   accent: 'green',
   glyph: 'DB',
+  requirements: {
+    prerequisites: ['Basic computer use', 'Comfort with tables (like a spreadsheet)'],
+    materials: ['A computer; free tools such as SQLite or an online SQL playground'],
+    duration: 'About 4–6 weeks at 1 hour a day',
+    outcomes: ['Design simple databases', 'Write queries to find, join and summarise data', 'Use SQL in analyst and developer roles'],
+    formalTraining: 'Database courses are offered by NIELIT, NPTEL/SWAYAM and IT-ITeS Sector Skill Council job roles.',
+    careers: ['Data analyst trainee', 'MIS executive', 'Back-end developer trainee'],
+  },
   modules: [
     m('sql-basics', 'Foundations', ['What is a database', 'Tables, rows and columns', 'Primary and foreign keys']),
     m('sql-query', 'Querying', ['SELECT and WHERE', 'ORDER BY and LIMIT', 'Aggregate functions and GROUP BY', 'JOINs explained']),
@@ -134,6 +188,14 @@ const DSA: LearningCourse = {
   codeLanguage: 'python',
   accent: 'navy',
   glyph: '{ }',
+  requirements: {
+    prerequisites: ['Python basics (finish the Python course first)', 'Class 10 maths'],
+    materials: ['A computer or phone — Python examples run here'],
+    duration: 'About 10–12 weeks at 1 hour a day',
+    outcomes: ['Choose the right data structure for a problem', 'Estimate speed with Big-O', 'Solve common coding interview questions'],
+    formalTraining: 'NPTEL/SWAYAM runs free certified DSA courses from IITs; it is core to B.Tech/BCA/MCA.',
+    careers: ['Software developer roles that use coding tests', 'Competitive programming'],
+  },
   modules: [
     m('dsa-intro', 'Foundations', ['What is an algorithm', 'Time and space complexity (Big-O)', 'How to break a problem into steps']),
     m('dsa-linear', 'Linear structures', ['Arrays and two pointers', 'Stacks', 'Queues', 'Linked lists', 'Hashing and hash maps']),
@@ -150,6 +212,14 @@ const DIGITAL: LearningCourse = {
   level: 'Beginner',
   accent: 'teal',
   glyph: 'PC',
+  requirements: {
+    prerequisites: ['None — start here if you are new to computers'],
+    materials: ['Access to a computer or smartphone (a CSC or library computer works)'],
+    duration: 'About 3–4 weeks at 30–45 minutes a day',
+    outcomes: ['Use a computer, email and the internet safely', 'Make documents and spreadsheets', 'Pay and keep documents digitally (UPI, DigiLocker)'],
+    formalTraining: 'PMGDISHA offered free digital literacy training through CSCs; NIELIT runs CCC (Course on Computer Concepts). Check current availability at your nearest CSC.',
+    careers: ['Data entry operator', 'CSC / office assistant', 'Required for most modern jobs'],
+  },
   modules: [
     m('dig-pc', 'Using a computer', ['Parts of a computer', 'Keyboard and mouse skills', 'Files and folders', 'Typing practice tips']),
     m('dig-net', 'Internet & safety', ['Browsing and searching well', 'Email basics', 'Spotting online fraud and fake calls', 'Strong passwords and OTP safety']),
@@ -166,6 +236,14 @@ const CAREER: LearningCourse = {
   level: 'Beginner',
   accent: 'green',
   glyph: 'CV',
+  requirements: {
+    prerequisites: ['None'],
+    materials: ['A phone or computer; a notebook for practice'],
+    duration: 'About 3–4 weeks at 30 minutes a day',
+    outcomes: ['Introduce yourself confidently', 'Write a clear resume', 'Prepare for common interview questions'],
+    formalTraining: 'Employability and soft-skill modules are part of most PMKVY and DDU-GKY courses; National Career Service (ncs.gov.in) lists jobs and job fairs.',
+    careers: ['Every job role — this improves your chances of selection'],
+  },
   modules: [
     m('car-eng', 'Spoken English', ['Introducing yourself', 'Everyday workplace phrases', 'Talking on the phone politely']),
     m('car-resume', 'Resume & interview', ['Writing your first resume', 'Common interview questions', 'Preparing for a technical interview']),

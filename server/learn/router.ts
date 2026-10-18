@@ -76,7 +76,44 @@ const DOUBT_SCHEMA = {
   required: ['understanding', 'steps', 'answer', 'verification'],
 };
 
+const CURRICULUM_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: 'Clear course title' },
+    description: { type: Type.STRING, description: 'One or two sentences: what the learner will be able to do' },
+    level: { type: Type.STRING, enum: ['Beginner', 'Beginner → Intermediate', 'Intermediate'] },
+    codeLanguage: { type: Type.STRING, enum: ['python', 'c', 'java', 'javascript', 'sql', 'html', 'none'], description: 'Programming language used in examples, or none' },
+    modules: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: { title: { type: Type.STRING }, subtopics: { type: Type.ARRAY, items: { type: Type.STRING } } },
+        required: ['title', 'subtopics'],
+      },
+    },
+    requirements: {
+      type: Type.OBJECT,
+      properties: {
+        prerequisites: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Education or skills needed before starting' },
+        materials: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Tools, equipment or devices needed' },
+        duration: { type: Type.STRING, description: 'Typical self-study time, e.g. "4–6 weeks at 1 hour a day"' },
+        outcomes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'What the learner can do at the end' },
+        formalTraining: { type: Type.STRING, description: 'Where to get certified formal training in India (ITI trade, PMKVY / Skill India Digital Hub job role, NIELIT, PM Vishwakarma, NIOS, etc.) and who can join. Say details vary by centre. Empty if not applicable.' },
+        careers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Jobs or self-employment options this leads to' },
+      },
+      required: ['prerequisites', 'duration', 'outcomes'],
+    },
+  },
+  required: ['title', 'description', 'level', 'modules', 'requirements'],
+};
+
 const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+
+/** Honest message for the learner: a used-up AI quota is different from a busy moment. */
+const unavailable = (err: any, busy: string) =>
+  /\b429\b|quota|RESOURCE_EXHAUSTED/i.test(String(err?.message || ''))
+    ? 'The AI tutor has reached its usage limit for now. Please try again later — your progress is saved.'
+    : busy;
 
 function tutorRules(course: string, language: string) {
   return `You are "UDAAN ONE Guru", a patient, expert tutor for ${course}. Learners are often first-generation students from rural India.
@@ -137,7 +174,54 @@ Then 3–5 key points, 2–3 common beginner mistakes, a 3-question multiple-cho
       res.json({ lesson });
     } catch (err: any) {
       console.warn('Lesson generation failed:', String(err?.message || '').slice(0, 140));
-      res.status(503).json({ error: 'The AI tutor is busy right now. Please try again in a moment.' });
+      res.status(503).json({ error: unavailable(err, 'The AI tutor is busy right now. Please try again in a moment.') });
+    }
+  });
+
+  const curriculumCache = new Map<string, any>();
+
+  /** Builds a complete course outline, with training requirements, for any topic a learner asks for. */
+  router.post('/curriculum', async (req, res) => {
+    const topic = clip(req.body?.topic, 160).trim();
+    const language = clip(req.body?.language || 'English', 30);
+    const context = clip(req.body?.context, 600);
+    if (topic.length < 2) return res.status(400).json({ error: 'Tell Guru what you want to learn.' });
+
+    const cacheKey = `${topic}|${language}|${context}`.toLowerCase();
+    if (curriculumCache.has(cacheKey)) return res.json({ course: curriculumCache.get(cacheKey) });
+
+    try {
+      const response = await generate(
+        {
+          contents: `A learner in India wants to learn: "${topic}".${context ? `\nContext: ${context}` : ''}
+Design a practical course from zero to job-ready basics:
+- 4 to 7 modules in a sensible order, each with 3 to 6 specific subtopics (short titles a lesson can be written for).
+- Cover theory, hands-on practice, safety (for trades) and how to earn from the skill.
+- requirements: honest prerequisites, materials needed, realistic self-study duration, outcomes, the formal training/certification route in India, and careers.
+- If the topic is unsafe, illegal or not a learnable skill, make the closest safe, legitimate course instead.
+Write all text in ${language}; keep technical terms in English where they are commonly used.`,
+          config: {
+            systemInstruction: tutorRules(topic, language),
+            responseMimeType: 'application/json',
+            responseSchema: CURRICULUM_SCHEMA,
+            thinkingConfig: { thinkingBudget: 512 },
+          },
+        },
+        undefined,
+        { timeoutMs: 45000 }
+      );
+      const course = JSON.parse(response.text || '{}');
+      course.modules = (course.modules || [])
+        .filter((m: any) => m?.title && Array.isArray(m.subtopics) && m.subtopics.length)
+        .slice(0, 8)
+        .map((m: any) => ({ title: clip(m.title, 100), subtopics: m.subtopics.slice(0, 8).map((s: any) => clip(s, 120)) }));
+      if (!course.modules.length) throw new Error('empty curriculum');
+      if (curriculumCache.size > 200) curriculumCache.delete(curriculumCache.keys().next().value as string);
+      curriculumCache.set(cacheKey, course);
+      res.json({ course });
+    } catch (err: any) {
+      console.warn('Curriculum generation failed:', String(err?.message || '').slice(0, 140));
+      res.status(503).json({ error: unavailable(err, 'Guru could not build that course right now. Please try again in a moment.') });
     }
   });
 
@@ -181,7 +265,7 @@ If the learner's own code is included, point out the exact bug and why it happen
       res.json({ solution });
     } catch (err: any) {
       console.warn('Doubt solving failed:', String(err?.message || '').slice(0, 140));
-      res.status(503).json({ error: 'The AI tutor is busy right now. Please try again in a moment.' });
+      res.status(503).json({ error: unavailable(err, 'The AI tutor is busy right now. Please try again in a moment.') });
     }
   });
 

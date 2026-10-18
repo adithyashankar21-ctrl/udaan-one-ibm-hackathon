@@ -15,13 +15,16 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Square,
   Target,
   TriangleAlert,
+  Volume2,
   XCircle,
 } from 'lucide-react';
 import { pythonWarm, runPython, type RunResult } from '../../services/pythonRunner';
 import { askDoubt, type DoubtSolution, type Lesson, type QuizItem } from '../../services/learnApi';
 import { useDictation } from '../smartapply/media';
+import { useSpeaker } from './useSpeaker';
 
 /* ── rich text: paragraphs, "- " bullets, `code` and **bold** ───────────── */
 
@@ -73,6 +76,65 @@ export const RichText: React.FC<{ text?: string; className?: string }> = ({ text
     </div>
   );
 };
+
+/* ── listen (read aloud) ───────────────────────────────────────────────── */
+
+export const ListenButton: React.FC<{ active: boolean; onToggle: () => void; dark?: boolean }> = ({ active, onToggle, dark }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-pressed={active}
+    className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition ${
+      dark
+        ? active
+          ? 'border-saffron bg-saffron text-navy'
+          : 'border-white/25 text-white hover:bg-white/10'
+        : active
+          ? 'border-teal-600 bg-teal-600 text-white'
+          : 'border-line bg-white text-navy hover:border-teal hover:text-teal-600'
+    }`}
+  >
+    {active ? (
+      <>
+        <span className="flex h-3 items-end gap-0.5" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <motion.span key={i} className="w-0.5 rounded bg-current" animate={{ height: ['30%', '100%', '30%'] }} transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.15 }} />
+          ))}
+        </span>
+        Stop <Square className="h-3 w-3" aria-hidden />
+      </>
+    ) : (
+      <>
+        <Volume2 className="h-4 w-4" aria-hidden /> Listen
+      </>
+    )}
+  </button>
+);
+
+export function lessonScript(l: Lesson) {
+  return [
+    l.title + '.',
+    l.overview,
+    l.analogy ? `Think of it like this. ${l.analogy}` : '',
+    ...l.sections.map((s, i) => `Part ${i + 1}. ${s.heading}. ${s.body}${s.code?.trim() ? ' The example is shown on your screen — try running it.' : ''}`),
+    l.keyPoints.length ? `Key points. ${l.keyPoints.join('. ')}.` : '',
+    l.commonMistakes?.length ? `Common mistakes to avoid. ${l.commonMistakes.join('. ')}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function solutionScript(s: DoubtSolution) {
+  return [
+    s.understanding,
+    s.approach ? `Here is the plan. ${s.approach}` : '',
+    ...s.steps.map((st, i) => `Step ${i + 1}. ${st.title}. ${st.explanation}`),
+    `So, the answer. ${s.answer}`,
+    s.code?.trim() ? 'The full code is on your screen.' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
 
 /* ── code block with copy + run (Python runs for real in the browser) ───── */
 
@@ -283,15 +345,20 @@ export const Quiz: React.FC<{ items: QuizItem[]; onComplete?: (score: number) =>
 
 const reveal = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const } } };
 
-export const LessonView: React.FC<{ lesson: Lesson; codeLanguage?: string; onAsk: (q: string) => void; onQuizDone: (score: number, total: number) => void }> = ({
-  lesson,
-  codeLanguage,
-  onAsk,
-  onQuizDone,
-}) => (
+export const LessonView: React.FC<{
+  lesson: Lesson;
+  codeLanguage?: string;
+  onAsk: (q: string) => void;
+  onQuizDone: (score: number, total: number) => void;
+  listening?: boolean;
+  onListen?: () => void;
+}> = ({ lesson, codeLanguage, onAsk, onQuizDone, listening = false, onListen }) => (
   <motion.article initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.09 } } }} className="space-y-6">
     <motion.div variants={reveal}>
-      <h2 className="text-2xl font-extrabold text-navy sm:text-3xl">{lesson.title}</h2>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-2xl font-extrabold text-navy sm:text-3xl">{lesson.title}</h2>
+        {onListen && <ListenButton active={listening} onToggle={onListen} />}
+      </div>
       <RichText text={lesson.overview} className="mt-3 text-base text-navy/85" />
     </motion.div>
 
@@ -396,10 +463,19 @@ const ThinkingCard: React.FC = () => {
   );
 };
 
-const SolutionView: React.FC<{ solution: DoubtSolution; codeLanguage?: string; onFollowUp: (q: string) => void }> = ({ solution, codeLanguage, onFollowUp }) => (
+const SolutionView: React.FC<{ solution: DoubtSolution; codeLanguage?: string; onFollowUp: (q: string) => void; listening?: boolean; onListen?: () => void }> = ({
+  solution,
+  codeLanguage,
+  onFollowUp,
+  listening = false,
+  onListen,
+}) => (
   <motion.div initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.12 } } }} className="space-y-4">
     <motion.div variants={reveal} className="rounded-2xl border border-line bg-white p-4">
-      <p className="text-xs font-bold uppercase tracking-wider text-muted">What you're asking</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted">What you're asking</p>
+        {onListen && <ListenButton active={listening} onToggle={onListen} />}
+      </div>
       <RichText text={solution.understanding} className="mt-1 text-navy" />
       {solution.approach && (
         <p className="mt-3 rounded-xl bg-navy-50 px-3 py-2 text-sm text-navy-800">
@@ -473,7 +549,7 @@ export const DoubtSolver: React.FC<{
   codeLanguage?: string;
   language: string;
   speechLocale: string;
-  prefill?: { text: string; nonce: number } | null;
+  prefill?: { text: string; nonce: number; speak?: boolean } | null;
   examples?: string[];
 }> = ({ course, subtopic, codeLanguage, language, speechLocale, prefill, examples = [] }) => {
   const [text, setText] = useState('');
@@ -481,9 +557,15 @@ export const DoubtSolver: React.FC<{
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
-  const dictation = useDictation(speechLocale, (t) => setText((prev) => (prev ? `${prev} ${t}` : t)));
+  const viaVoice = useRef(false);
+  const dictation = useDictation(speechLocale, (t) => {
+    viaVoice.current = true;
+    setText((prev) => (prev ? `${prev} ${t}` : t));
+  });
+  const speaker = useSpeaker(speechLocale);
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, spoken = viaVoice.current) => {
+    viaVoice.current = false;
     const q = question.trim();
     if (!q || busy) return;
     const id = Date.now();
@@ -498,6 +580,8 @@ export const DoubtSolver: React.FC<{
         .map((e) => ({ question: e.question, answer: e.solution!.answer }));
       const solution = await askDoubt({ course, subtopic, question: q, language, history });
       setEntries((list) => list.map((e) => (e.id === id ? { ...e, solution } : e)));
+      // Asked by voice → answer by voice too
+      if (spoken && speaker.supported) speaker.speak(String(id), solutionScript(solution));
     } catch (err: any) {
       setEntries((list) => list.map((e) => (e.id === id ? { ...e, error: err?.message || 'Something went wrong.' } : e)));
     } finally {
@@ -506,7 +590,7 @@ export const DoubtSolver: React.FC<{
   };
 
   useEffect(() => {
-    if (prefill?.text) ask(prefill.text);
+    if (prefill?.text) ask(prefill.text, Boolean(prefill.speak));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.nonce]);
 
@@ -566,7 +650,7 @@ export const DoubtSolver: React.FC<{
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + i * 0.07 }}
-              onClick={() => ask(ex)}
+              onClick={() => ask(ex, false)}
               className="rounded-full border border-dashed border-navy/25 bg-white px-3 py-1.5 text-left text-sm text-navy/80 transition hover:-translate-y-0.5 hover:border-saffron hover:text-navy"
             >
               {ex}
@@ -582,14 +666,20 @@ export const DoubtSolver: React.FC<{
               <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-navy px-4 py-2.5 text-sm text-white">{e.question}</p>
             </div>
             {e.solution ? (
-              <SolutionView solution={e.solution} codeLanguage={codeLanguage} onFollowUp={ask} />
+              <SolutionView
+                solution={e.solution}
+                codeLanguage={codeLanguage}
+                onFollowUp={(q) => ask(q, false)}
+                listening={speaker.speakingId === String(e.id)}
+                onListen={speaker.supported ? () => (speaker.speakingId === String(e.id) ? speaker.stop() : speaker.speak(String(e.id), solutionScript(e.solution!))) : undefined}
+              />
             ) : e.error ? (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-coral/30 bg-coral-50 p-4 text-sm text-coral-600">
                 <span>{e.error}</span>
                 <button
                   onClick={() => {
                     setEntries((list) => list.filter((x) => x.id !== e.id));
-                    ask(e.question);
+                    ask(e.question, false);
                   }}
                   className="btn btn-outline btn-sm"
                 >

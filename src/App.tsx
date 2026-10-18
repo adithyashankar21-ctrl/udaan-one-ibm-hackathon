@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ScanLine, Sparkles, X } from 'lucide-react';
+import { ArrowRight, BookOpen, ScanLine, Sparkles, X } from 'lucide-react';
 import {
   BeneficiaryProfile,
   ChannelMode,
@@ -43,6 +43,8 @@ import {
   type DraftView,
   type SessionState,
 } from './services/autofillApi';
+import { LEARN_INTENT_EVENT, type LearningEntry } from './services/learnApi';
+import { COURSE_MAP } from './data/learningTracks';
 
 // Clean baseline profile for real citizen data entry
 const CLEAN_EMPTY_PROFILE: BeneficiaryProfile = {
@@ -120,6 +122,8 @@ export default function App() {
   // Smart Apply: shared server-side session (consent, unified profile, documents, drafts)
   const [autofillSession, setAutofillSession] = useState<SessionState | null>(null);
   const [applyIntent, setApplyIntent] = useState<ApplyIntentDetail | null>(null);
+  const [learnIntent, setLearnIntent] = useState<LearningEntry | null>(null);
+  const [learningEntry, setLearningEntry] = useState<LearningEntry | null>(null);
   const [smartApplyEntry, setSmartApplyEntry] = useState<{ schemeId?: string | null; draftId?: string | null; channel?: string } | null>(null);
   const [chatDraft, setChatDraft] = useState<DraftView | null>(null);
   const channelRef = useRef(currentChannel);
@@ -170,6 +174,23 @@ export default function App() {
     window.addEventListener(APPLY_INTENT_EVENT, onIntent);
     return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
   }, []);
+
+  // Any assistant channel that hears "teach me…" offers the matching Learning Hub course
+  useEffect(() => {
+    const onLearn = (e: Event) => {
+      setApplyIntent(null);
+      setLearnIntent((e as CustomEvent<LearningEntry>).detail);
+    };
+    window.addEventListener(LEARN_INTENT_EVENT, onLearn);
+    return () => window.removeEventListener(LEARN_INTENT_EVENT, onLearn);
+  }, []);
+
+  /** Opens the Learning Hub at a course, a custom topic or a doubt. */
+  const openLearning = (entry: Omit<LearningEntry, 'nonce'>) => {
+    setLearnIntent(null);
+    setLearningEntry({ ...entry, nonce: Date.now() });
+    setCurrentChannel('learning');
+  };
 
   /** Share details the person gives in any channel with the Smart Apply profile (after consent). */
   const syncToAutofill = (partial: Partial<BeneficiaryProfile>, source: string) => {
@@ -258,6 +279,35 @@ export default function App() {
       )}
 
       {/* Hand-off from any channel to the shared Smart Apply workflow */}
+      {/* Hand-off from any assistant channel to the Learning Hub */}
+      {learnIntent && !applyIntent && currentChannel !== 'learning' && (
+        <div role="status" className="fixed inset-x-3 bottom-20 z-40 mx-auto max-w-xl animate-fade-up lg:bottom-6">
+          <div className="surface-dark flex flex-col gap-3 rounded-2xl p-4 shadow-lift sm:flex-row sm:items-center">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-saffron/20 text-saffron">
+              <BookOpen className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold">Keep learning with Guru</span>
+              <span className="block truncate text-xs text-slate-300">
+                {learnIntent.courseId && COURSE_MAP[learnIntent.courseId]
+                  ? `${COURSE_MAP[learnIntent.courseId].title} — lessons, practice & quizzes`
+                  : learnIntent.topic
+                    ? `A full course on “${learnIntent.topic}”, with training requirements`
+                    : 'Lessons, practice and step-by-step doubt solving'}
+              </span>
+            </span>
+            <span className="flex gap-2">
+              <button onClick={() => openLearning(learnIntent)} className="btn btn-accent flex-1 sm:flex-none">
+                Open in Learning Hub <ArrowRight className="h-4 w-4" aria-hidden />
+              </button>
+              <button onClick={() => setLearnIntent(null)} className="btn btn-on-dark w-11 p-0" aria-label="Dismiss">
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+
       {applyIntent && currentChannel !== 'smart_apply' && (
         <div role="status" className="fixed inset-x-3 bottom-20 z-40 mx-auto max-w-xl animate-fade-up lg:bottom-6">
           <div className="surface-dark flex flex-col gap-3 rounded-2xl p-4 shadow-lift sm:flex-row sm:items-center">
@@ -326,10 +376,11 @@ export default function App() {
             onOpenProfile={() => setIsProfileModalOpen(true)}
             onApply={(schemeId) => openSmartApply({ schemeId })}
             onNavigate={setCurrentChannel}
+            onLearn={(topic, context) => openLearning({ topic, context })}
           />
         )}
 
-        {currentChannel === 'learning' && <LearningHubPage langConfig={langConfig} onNavigate={setCurrentChannel} />}
+        {currentChannel === 'learning' && <LearningHubPage langConfig={langConfig} onNavigate={setCurrentChannel} entry={learningEntry} onEntryHandled={() => setLearningEntry(null)} />}
 
         {currentChannel === 'enterprise' && (
           <EnterprisePage

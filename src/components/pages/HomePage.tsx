@@ -21,6 +21,7 @@ import {
   Square,
   Store,
   Rocket,
+  BookOpen,
 } from 'lucide-react';
 import { BeneficiaryProfile, ChannelMode, Language, LanguageCode } from '../../types';
 import { getShellStrings } from '../../data/uiStrings';
@@ -67,6 +68,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
     { id: 'documents', icon: FileBadge, title: t.help.document, body: 'PAN, voter ID, passport, certificates — the right form and proofs.' },
     { id: 'enterprise', icon: Rocket, title: t.help.business, body: 'Loans, grants and a plan for your trade.' },
     { id: 'skills', icon: GraduationCap, title: t.help.jobs, body: 'Certified courses and job pathways.' },
+    { id: 'learning', icon: BookOpen, title: 'Learn a skill with AI', body: 'Python, computers, trades — lessons and doubt solving.' },
     {
       id: 'schemes',
       icon: BadgeCheck,
@@ -280,7 +282,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
             <button
               key={tile.title}
               onClick={tile.onClick || (() => onNavigate(tile.id))}
-              className={`card group flex min-h-[8.5rem] flex-col p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lift animate-fade-up ${i === 4 ? 'md:col-span-2 lg:col-span-2' : 'lg:col-span-1'}`}
+              className={`card group flex min-h-[8.5rem] flex-col p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lift animate-fade-up lg:col-span-1`}
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <span className="flex w-full items-start justify-between">

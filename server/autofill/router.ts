@@ -1,0 +1,648 @@
+/**
+ * Smart Apply & Autofill API (/api/autofill/*).
+ *
+ * Security model
+ *  - Session: random 256-bit token in an HttpOnly, SameSite=Strict cookie scoped to /api.
+ *  - Every state-changing request must carry the X-Udaan-Client header (blocks cross-site
+ *    form posts; no CORS is enabled, so other origins cannot add it).
+ *  - Nothing personal is stored until the person gives consent; documents are processed
+ *    in memory and discarded; Aadhaar is kept as the last 4 digits only.
+ *  - The helpline can resume a draft only with its reference + PIN, gets a short-lived
+ *    token for that one draft, and never sees field values.
+ *  - Errors are logged without request bodies or document contents.
+ */
+import crypto from 'crypto';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, type DocKind, type FormFieldSpec, type ProfileKey } from '../../src/data/autofillSchema';
+import { IngestError, checkFiles } from './ingest';
+import { buildDraftView, fieldsHash } from './mapping';
+import { extractDocument, interpretAnswer, type Generate } from './ocr';
+import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
+import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
+import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
+import {
+  RETENTION_DAYS,
+  deleteSession,
+  hashPin,
+  hashToken,
+  loadSession,
+  lookupReference,
+  newReference,
+  newSession,
+  removeReference,
+  saveReference,
+  saveSession,
+  sweepExpired,
+  verifyPin,
+} from './store';
+import type { Candidate, Draft, FieldRecord, SessionData, SourceKind } from './types';
+import { hasNonLatin, isValidAadhaar, normalise, scrubAadhaar } from './validate';
+
+export const CONSENT_VERSION = '2026-10-17';
+const COOKIE = 'udaan_sid';
+const MAX_AGE_S = RETENTION_DAYS * 24 * 60 * 60;
+
+/* ── helpers ──────────────────────────────────────────────────────────── */
+
+function readCookie(req: Request, name: string): string | null {
+  const header = req.headers.cookie || '';
+  for (const part of header.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+
+function setCookie(req: Request, res: Response, token: string, maxAge = MAX_AGE_S) {
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader(
+    'Set-Cookie',
+    `${COOKIE}=${encodeURIComponent(token)}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`
+  );
+}
+
+function logError(route: string, err: any) {
+  const msg = scrubAadhaar(String(err?.message || err || 'unknown')).slice(0, 160);
+  console.warn(`[autofill] ${route} failed: ${msg}`);
+}
+
+const channelSource = (channel?: string): SourceKind =>
+  channel === 'voice' ? 'voice' : channel === 'chat' ? 'chat' : channel === 'helpline' ? 'helpline' : channel === 'typed' ? 'typed' : 'answer';
+
+/** Rate limiter: at most `limit` hits per key per window. */
+function limiter(limit: number, windowMs: number) {
+  const hits = new Map<string, number[]>();
+  return (key: string) => {
+    const now = Date.now();
+    const list = (hits.get(key) || []).filter((t) => now - t < windowMs);
+    list.push(now);
+    hits.set(key, list);
+    return list.length <= limit;
+  };
+}
+
+interface Ctx {
+  session: SessionData | null;
+  token: string | null;
+}
+
+function ctx(req: Request): Ctx {
+  const token = readCookie(req, COOKIE);
+  return { token, session: token ? loadSession(hashToken(token)) : null };
+}
+
+function profileView(session: SessionData) {
+  return {
+    fields: Object.fromEntries(
+      Object.entries(session.profile.fields).map(([k, f]) => [
+        k,
+        { value: f!.value, source: f!.source, sourceLabel: f!.sourceLabel, status: f!.status, confidence: f!.confidence, corroboratedBy: f!.corroboratedBy || [], checksumOk: f!.checksumOk },
+      ])
+    ),
+    conflicts: session.profile.conflicts,
+  };
+}
+
+function draftSummary(session: SessionData, d: Draft) {
+  const v = buildDraftView(session, d);
+  const required = v.documents.filter((x) => x.required && !x.manual);
+  return {
+    id: d.id,
+    schemeId: d.schemeId,
+    schemeName: v.scheme?.name || d.schemeId,
+    status: v.status,
+    completion: v.completion,
+    missingCount: v.missing.length,
+    conflictCount: v.conflicts.length,
+    reviewCount: v.needsReview.length,
+    docsRequired: required.length,
+    docsHave: required.filter((x) => x.have).length,
+    missingDocs: required.filter((x) => !x.have).map((x) => x.label),
+    reference: d.reference,
+    updatedAt: d.updatedAt,
+  };
+}
+
+function sessionPayload(session: SessionData | null) {
+  if (!session) return { hasSession: false, consent: null, consentVersion: CONSENT_VERSION, retentionDays: RETENTION_DAYS };
+  return {
+    hasSession: true,
+    consent: session.consent || null,
+    consentVersion: CONSENT_VERSION,
+    retentionDays: RETENTION_DAYS,
+    profile: profileView(session),
+    documents: session.documents,
+    drafts: session.drafts.map((d) => draftSummary(session, d)),
+  };
+}
+
+/** Normalise and store one answer for a draft field. */
+async function storeAnswer(
+  generate: Generate,
+  session: SessionData,
+  draft: Draft,
+  spec: FormFieldSpec,
+  text: string,
+  source: SourceKind,
+  status: FieldRecord['status']
+): Promise<{ ok: boolean; value?: string; error?: string }> {
+  let n = normalise(spec.type, text, spec.options);
+  const needsAi = !n.ok || (spec.type === 'text' && hasNonLatin(text));
+  if (needsAi && spec.type !== 'aadhaar') {
+    try {
+      const ai = await interpretAnswer(generate, { label: spec.label, type: spec.type, options: spec.options }, text);
+      if (ai.understood && ai.value) {
+        const again = normalise(spec.type, ai.value, spec.options);
+        if (again.ok) n = again;
+      }
+    } catch (err) {
+      logError('interpret-answer', err);
+    }
+  }
+  if (!n.ok || !n.value) return { ok: false, error: n.error || 'Could not understand that answer' };
+
+  const sourceLabel = SOURCE_LABELS[source] || 'Your answer';
+  if (spec.profileKey) {
+    const cand: Candidate = { value: n.value, source, sourceLabel, status, checksumOk: n.checksumOk };
+    const r = mergeCandidate(session.profile, spec.profileKey, cand);
+    if (r.conflict) return { ok: true, value: n.value, error: 'This differs from what we already have — please choose the right value.' };
+  } else {
+    draft.answers[spec.key] = { value: n.value, source, sourceLabel, status, updatedAt: Date.now() };
+  }
+  return { ok: true, value: n.value };
+}
+
+/* ── router ───────────────────────────────────────────────────────────── */
+
+export function createAutofillRouter(generate: Generate) {
+  const router = express.Router();
+  const docLimit = limiter(30, 60 * 60 * 1000);
+  const aiLimit = limiter(120, 60 * 60 * 1000);
+  const pinIpLimit = limiter(20, 60 * 60 * 1000);
+  const pinFailures = new Map<string, { count: number; until: number }>();
+  const helplineTokens = new Map<string, { sessionHash: string; draftId: string; expires: number }>();
+
+  sweepExpired();
+  setInterval(sweepExpired, 60 * 60 * 1000).unref();
+
+  router.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'GET' && req.headers['x-udaan-client'] !== '1') {
+      return res.status(403).json({ error: 'Missing client header' });
+    }
+    next();
+  });
+
+  const withSession = (handler: (req: Request, res: Response, session: SessionData) => any) => async (req: Request, res: Response) => {
+    const { session } = ctx(req);
+    if (!session || !session.consent) return res.status(401).json({ error: 'consent_required' });
+    try {
+      await handler(req, res, session);
+    } catch (err) {
+      logError(req.path, err);
+      if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+  };
+
+  const findDraft = (session: SessionData, id: string) => session.drafts.find((d) => d.id === id);
+
+  /* Session & consent */
+
+  router.get('/session', (req, res) => {
+    const { session } = ctx(req);
+    if (session) saveSession(session);
+    res.json(sessionPayload(session));
+  });
+
+  router.post('/consent', (req, res) => {
+    if (req.body?.granted !== true || req.body?.version !== CONSENT_VERSION) return res.status(400).json({ error: 'Consent not given' });
+    let { session, token } = ctx(req);
+    if (!session) {
+      const created = newSession();
+      session = created.data;
+      token = created.token;
+    }
+    session.consent = { version: CONSENT_VERSION, at: Date.now() };
+    saveSession(session);
+    setCookie(req, res, token!);
+    res.json(sessionPayload(session));
+  });
+
+  router.delete('/session', (req, res) => {
+    const { session } = ctx(req);
+    if (session) deleteSession(session);
+    setCookie(req, res, '', 0);
+    res.json({ deleted: true });
+  });
+
+  /* Schemes (no personal data) */
+
+  router.get('/schemes', (_req, res) => res.json({ schemes: listSchemes() }));
+
+  router.post('/intent', async (req, res) => {
+    if (!aiLimit(req.ip || 'ip')) return res.status(429).json({ error: 'Too many requests' });
+    const text = String(req.body?.text || '').slice(0, 1000);
+    const intent = await detectIntent(generate, text);
+    res.json({ ...intent, scheme: intent.schemeId ? schemeInfo(intent.schemeId) : null, relatedSchemes: (intent.related as string[]).map((id: string) => schemeInfo(id)).filter(Boolean) });
+  });
+
+  router.get('/recommend', (req, res) => {
+    const { session } = ctx(req);
+    const profile = session?.consent ? session.profile : { fields: {}, conflicts: [] };
+    res.json({ recommendations: recommend(profile), note: 'Preliminary estimate from your profile — not an official eligibility decision.' });
+  });
+
+  /* Profile */
+
+  router.post(
+    '/profile',
+    withSession((req, res, session) => {
+      const updates = req.body?.updates || {};
+      const source = channelSource(req.body?.source);
+      const status: FieldRecord['status'] = req.body?.confirm ? 'confirmed' : 'self_declared';
+      const errors: Record<string, string> = {};
+      for (const [key, raw] of Object.entries(updates)) {
+        const def = PROFILE_FIELD_MAP[key as ProfileKey];
+        if (!def || typeof raw !== 'string' || !raw.trim()) continue;
+        const n = normalise(def.type, raw, def.options);
+        if (!n.ok || !n.value) {
+          errors[key] = n.error || 'Invalid value';
+          continue;
+        }
+        mergeCandidate(session.profile, def.key, { value: n.value, source, sourceLabel: SOURCE_LABELS[source], status, checksumOk: n.checksumOk });
+      }
+      saveSession(session);
+      res.json({ ...sessionPayload(session), errors });
+    })
+  );
+
+  router.post(
+    '/profile/resolve',
+    withSession((req, res, session) => {
+      const ok = resolveConflict(session.profile, String(req.body?.conflictId || ''), { index: req.body?.index, value: req.body?.value });
+      if (!ok) return res.status(400).json({ error: 'Could not resolve that' });
+      saveSession(session);
+      res.json(sessionPayload(session));
+    })
+  );
+
+  /* Documents */
+
+  router.post(
+    '/documents',
+    withSession(async (req, res, session) => {
+      if (!docLimit(session.hash)) return res.status(429).json({ error: 'Too many uploads in the last hour. Please wait a little.' });
+      let files;
+      try {
+        files = checkFiles(req.body?.files);
+      } catch (err) {
+        if (err instanceof IngestError) return res.status(400).json({ error: err.message });
+        throw err;
+      }
+      const hint = req.body?.hint as DocKind | undefined;
+      let extracted;
+      try {
+        extracted = await extractDocument(generate, files, hint);
+      } catch (err) {
+        logError('documents/extract', err);
+        return res.status(502).json({ error: 'The document reader is busy or unavailable right now. Please try again in a minute, or type the details instead.' });
+      } finally {
+        // Drop the original bytes as soon as extraction is done
+        for (const f of files) f.buffer.fill(0);
+      }
+      const doc = { ...extracted, id: crypto.randomBytes(8).toString('hex'), uploadedAt: Date.now() };
+      for (const f of doc.fields) {
+        if (!f.value || !f.legible || f.confidence < 0.6) continue;
+        const r = mergeCandidate(session.profile, f.key, {
+          value: f.value,
+          source: 'document',
+          sourceLabel: doc.label,
+          status: 'extracted',
+          docId: doc.id,
+          confidence: f.confidence,
+          checksumOk: f.checksumOk,
+        });
+        f.merged = r.changed;
+      }
+      session.documents.push(doc);
+      saveSession(session);
+      res.json({ document: doc, ...sessionPayload(session) });
+    })
+  );
+
+  router.post(
+    '/documents/:id/confirm',
+    withSession((req, res, session) => {
+      const doc = session.documents.find((d) => d.id === req.params.id);
+      if (!doc) return res.status(404).json({ error: 'Document not found' });
+      const values: Record<string, string> = req.body?.values || {};
+      const errors: Record<string, string> = {};
+      for (const [key, raw] of Object.entries(values)) {
+        const def = PROFILE_FIELD_MAP[key as ProfileKey];
+        if (!def || typeof raw !== 'string' || !raw.trim()) continue;
+        const n = normalise(def.type, raw, def.options);
+        if (!n.ok || !n.value) {
+          errors[key] = n.error || 'Invalid value';
+          continue;
+        }
+        const field = doc.fields.find((f) => f.key === key);
+        mergeCandidate(session.profile, def.key, {
+          value: n.value,
+          source: 'document',
+          sourceLabel: `${doc.label} (you checked)`,
+          status: 'confirmed',
+          docId: doc.id,
+          checksumOk: n.checksumOk ?? field?.checksumOk,
+        });
+        if (field) {
+          field.value = n.value;
+          field.merged = true;
+          field.legible = true;
+        }
+      }
+      saveSession(session);
+      res.json({ ...sessionPayload(session), errors });
+    })
+  );
+
+  router.delete(
+    '/documents/:id',
+    withSession((req, res, session) => {
+      session.documents = session.documents.filter((d) => d.id !== req.params.id);
+      forgetDocument(session.profile, req.params.id);
+      saveSession(session);
+      res.json(sessionPayload(session));
+    })
+  );
+
+  /* Drafts */
+
+  router.post(
+    '/drafts',
+    withSession((req, res, session) => {
+      const schemeId = String(req.body?.schemeId || '');
+      if (!FORM_SCHEMA_MAP[schemeId]) return res.status(400).json({ error: 'Unsupported scheme' });
+      const channel = String(req.body?.channel || 'web').slice(0, 20);
+      let draft = session.drafts.find((d) => d.schemeId === schemeId && !d.generated);
+      if (!draft) {
+        draft = { id: crypto.randomBytes(8).toString('hex'), reference: newReference(), schemeId, createdAt: Date.now(), updatedAt: Date.now(), channels: [], answers: {} };
+        session.drafts.push(draft);
+      }
+      draft.channels.push({ channel, at: Date.now() });
+      draft.channels = draft.channels.slice(-20);
+      saveSession(session);
+      res.json({ draft: buildDraftView(session, draft), ...sessionPayload(session) });
+    })
+  );
+
+  router.get(
+    '/drafts/:id',
+    withSession((req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      res.json({ draft: buildDraftView(session, draft), fieldsHash: fieldsHash(buildDraftView(session, draft).fields) });
+    })
+  );
+
+  router.delete(
+    '/drafts/:id',
+    withSession((req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (draft) removeReference(draft.reference);
+      session.drafts = session.drafts.filter((d) => d.id !== req.params.id);
+      saveSession(session);
+      res.json(sessionPayload(session));
+    })
+  );
+
+  router.post(
+    '/drafts/:id/answer',
+    withSession(async (req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const spec = FORM_SCHEMA_MAP[draft.schemeId].fields.find((f) => f.key === req.body?.key);
+      if (!spec) return res.status(400).json({ error: 'Unknown field' });
+      const result = await storeAnswer(generate, session, draft, spec, String(req.body?.text || '').slice(0, 500), channelSource(req.body?.channel), 'self_declared');
+      draft.updatedAt = Date.now();
+      saveSession(session);
+      const view = buildDraftView(session, draft);
+      res.json({ result, draft: view, fieldsHash: fieldsHash(view.fields) });
+    })
+  );
+
+  router.post(
+    '/drafts/:id/fields',
+    withSession(async (req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const specs = FORM_SCHEMA_MAP[draft.schemeId].fields;
+      const errors: Record<string, string> = {};
+      for (const [key, raw] of Object.entries(req.body?.values || {})) {
+        const spec = specs.find((f) => f.key === key);
+        if (!spec || typeof raw !== 'string') continue;
+        if (!raw.trim()) {
+          if (spec.profileKey) delete session.profile.fields[spec.profileKey];
+          else delete draft.answers[key];
+          continue;
+        }
+        const r = await storeAnswer(generate, session, draft, spec, raw, 'typed', 'confirmed');
+        if (!r.ok) errors[key] = r.error || 'Invalid value';
+      }
+      draft.updatedAt = Date.now();
+      saveSession(session);
+      const view = buildDraftView(session, draft);
+      res.json({ errors, draft: view, fieldsHash: fieldsHash(view.fields), ...sessionPayload(session) });
+    })
+  );
+
+  router.post(
+    '/drafts/:id/approve',
+    withSession((req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const view = buildDraftView(session, draft);
+      if (!view.readyForApproval) return res.status(400).json({ error: 'Some required details are missing or need a decision first.' });
+      const hash = fieldsHash(view.fields);
+      if (req.body?.fieldsHash !== hash) return res.status(409).json({ error: 'The details changed since you reviewed them. Please review again.' });
+      draft.approval = { at: Date.now(), fieldsHash: hash };
+      draft.updatedAt = Date.now();
+      saveSession(session);
+      res.json({ draft: buildDraftView(session, draft), fieldsHash: hash });
+    })
+  );
+
+  router.post(
+    '/drafts/:id/official-form',
+    withSession(async (req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      if (!docLimit(session.hash)) return res.status(429).json({ error: 'Too many uploads in the last hour.' });
+      let files;
+      try {
+        files = checkFiles(req.body?.files);
+      } catch (err) {
+        if (err instanceof IngestError) return res.status(400).json({ error: err.message });
+        throw err;
+      }
+      const file = files[0];
+      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mime)) return res.status(400).json({ error: 'Upload the official form as a PDF, JPG or PNG.' });
+      const view = buildDraftView(session, draft);
+      try {
+        const analysed = await analyseOfficialForm(generate, file.buffer, file.mime, view.fields);
+        draft.officialForm = { name: file.name, mime: file.mime, bytesB64: file.buffer.toString('base64'), uploadedAt: Date.now(), ...analysed };
+      } catch (err) {
+        logError('official-form', err);
+        return res.status(502).json({ error: 'Could not read the layout of that form. You can still download the structured draft.' });
+      }
+      draft.generated = undefined;
+      draft.updatedAt = Date.now();
+      saveSession(session);
+      res.json({ draft: buildDraftView(session, draft) });
+    })
+  );
+
+  router.delete(
+    '/drafts/:id/official-form',
+    withSession((req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      draft.officialForm = undefined;
+      saveSession(session);
+      res.json({ draft: buildDraftView(session, draft) });
+    })
+  );
+
+  router.post(
+    '/drafts/:id/pdf',
+    withSession(async (req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const view = buildDraftView(session, draft);
+      if (!view.approved) return res.status(403).json({ error: 'Please review and approve the application first.' });
+
+      // Full Aadhaar is accepted only for this one PDF, never stored or logged.
+      let aadhaarFull: string | undefined;
+      const rawAadhaar = String(req.body?.aadhaarFull || '').replace(/\D/g, '');
+      if (rawAadhaar) {
+        const stored = session.profile.fields.aadhaar?.value.replace(/\D/g, '').slice(-4);
+        if (!isValidAadhaar(rawAadhaar)) return res.status(400).json({ error: 'That Aadhaar number is not valid. Please check it.' });
+        if (stored && stored !== rawAadhaar.slice(-4)) return res.status(400).json({ error: 'That Aadhaar number does not match the one on your application.' });
+        aadhaarFull = rawAadhaar;
+      }
+
+      const useOfficial = req.body?.use === 'official' && draft.officialForm;
+      const bytes = useOfficial
+        ? await fillOfficialForm(draft.officialForm!, view, aadhaarFull)
+        : await generateDraftPdf(view, { aadhaarFull, approvedAt: draft.approval?.at });
+      aadhaarFull = undefined;
+
+      draft.generated = { at: Date.now(), kind: useOfficial ? (draft.officialForm!.kind === 'acroform' ? 'official_acroform' : 'official_overlay') : 'draft_pdf' };
+      saveSession(session);
+      const name = `UDAAN_ONE_${draft.schemeId}_${draft.reference}${useOfficial ? '_official_form' : '_draft'}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+      res.send(Buffer.from(bytes));
+    })
+  );
+
+  router.post(
+    '/drafts/:id/pin',
+    withSession((req, res, session) => {
+      const draft = findDraft(session, req.params.id);
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const pin = String(req.body?.pin || '');
+      if (!/^\d{4,6}$/.test(pin) || /^(\d)\1+$/.test(pin) || '0123456789'.includes(pin)) {
+        return res.status(400).json({ error: 'Choose a 4 to 6 digit PIN that is not all the same digit or a simple sequence.' });
+      }
+      draft.pinHash = hashPin(pin);
+      saveReference(draft.reference, session.hash, draft.id);
+      saveSession(session);
+      res.json({ reference: draft.reference, hasPin: true });
+    })
+  );
+
+  /* Helpline: resume with reference + PIN, scoped to one draft, no field values exposed */
+
+  router.post('/helpline/resume', (req, res) => {
+    const reference = String(req.body?.reference || '').trim().toUpperCase();
+    const pin = String(req.body?.pin || '');
+    if (!pinIpLimit(req.ip || 'ip')) return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+    const fail = pinFailures.get(reference);
+    if (fail && fail.until > Date.now()) return res.status(429).json({ error: 'Too many wrong PINs for this reference. Try again in 15 minutes.' });
+
+    const ref = lookupReference(reference);
+    const session = ref ? loadSession(ref.sessionHash) : null;
+    const draft = session?.drafts.find((d) => d.id === ref!.draftId);
+    if (!draft || !draft.pinHash || !verifyPin(pin, draft.pinHash)) {
+      const f = pinFailures.get(reference) || { count: 0, until: 0 };
+      f.count += 1;
+      if (f.count >= 5) {
+        f.until = Date.now() + 15 * 60 * 1000;
+        f.count = 0;
+      }
+      pinFailures.set(reference, f);
+      return res.status(401).json({ error: 'Reference or PIN not recognised.' });
+    }
+    pinFailures.delete(reference);
+    const token = crypto.randomBytes(24).toString('base64url');
+    helplineTokens.set(token, { sessionHash: ref!.sessionHash, draftId: draft.id, expires: Date.now() + 30 * 60 * 1000 });
+    draft.channels.push({ channel: 'helpline', at: Date.now() });
+    saveSession(session!);
+    res.json({ token });
+  });
+
+  const helplineCtx = (req: Request) => {
+    const token = String(req.headers['x-helpline-token'] || '');
+    const t = helplineTokens.get(token);
+    if (!t || t.expires < Date.now()) return null;
+    const session = loadSession(t.sessionHash);
+    const draft = session?.drafts.find((d) => d.id === t.draftId);
+    return session && draft ? { session, draft } : null;
+  };
+
+  const helplineView = (session: SessionData, draft: Draft) => {
+    const v = buildDraftView(session, draft);
+    return {
+      reference: draft.reference,
+      schemeName: v.scheme?.name,
+      status: v.status,
+      completion: v.completion,
+      conflicts: v.conflicts.length,
+      missing: v.missing.map((f) => ({ key: f.key, label: f.label, labelHi: f.labelHi, question: f.question, questionHi: f.questionHi, type: f.type, options: f.options })),
+      nextSteps: v.nextSteps,
+    };
+  };
+
+  router.get('/helpline/draft', (req, res) => {
+    const c = helplineCtx(req);
+    if (!c) return res.status(401).json({ error: 'Helpline session expired. Please enter your reference and PIN again.' });
+    res.json(helplineView(c.session, c.draft));
+  });
+
+  router.post('/helpline/answer', async (req, res) => {
+    const c = helplineCtx(req);
+    if (!c) return res.status(401).json({ error: 'Helpline session expired.' });
+    const spec = FORM_SCHEMA_MAP[c.draft.schemeId].fields.find((f) => f.key === req.body?.key);
+    if (!spec) return res.status(400).json({ error: 'Unknown field' });
+    try {
+      const result = await storeAnswer(generate, c.session, c.draft, spec, String(req.body?.text || '').slice(0, 500), 'helpline', 'self_declared');
+      c.draft.updatedAt = Date.now();
+      saveSession(c.session);
+      // Echo back only whether it was understood, not the stored value
+      res.json({ ok: result.ok, error: result.error, ...helplineView(c.session, c.draft) });
+    } catch (err) {
+      logError('helpline/answer', err);
+      res.status(500).json({ error: 'Something went wrong.' });
+    }
+  });
+
+  return router;
+}
+
+/** JSON error for oversized uploads (registered after the routes). */
+export function autofillErrorHandler(err: any, req: Request, res: Response, next: NextFunction) {
+  if (err?.type === 'entity.too.large' && req.path.startsWith('/api/autofill')) {
+    return res.status(413).json({ error: 'That upload is too large. Send fewer pages at once, or smaller photos.' });
+  }
+  next(err);
+}

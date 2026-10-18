@@ -1,0 +1,6 @@
+{
+  "name": "UDAAN ONE - AI Voice Livelihood & Skilling Assistant",
+  "description": "Multilingual AI voice assistant for Scheduled Caste (SC) beneficiaries under PM-AJAY GIA component, offering conversational livelihood mapping, NSQF skilling pathways, district economic matching, and multi-channel access (Voice, Kiosk, WhatsApp, IVR).",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

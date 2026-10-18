@@ -3,6 +3,7 @@ export type ChannelMode =
   | 'schemes'
   | 'skills'
   | 'enterprise'
+  | 'learning'
   | 'applications'
   | 'smart_apply'
   | 'documents'

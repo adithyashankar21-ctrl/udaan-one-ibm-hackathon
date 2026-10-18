@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createAutofillRouter, autofillErrorHandler } from './server/autofill/router';
+import { createLearnRouter } from './server/learn/router';
 import { detectIntentLocal } from './server/autofill/schemes';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
 
@@ -56,13 +57,17 @@ function isTransientError(err: any): boolean {
   return /\b(503|429|500)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(msg);
 }
 
+// Models whose free-tier daily quota ran out are skipped for a while instead of retried on every request
+const exhaustedUntil = new Map<string, number>();
+
 async function generateWithFallback(
   request: Record<string, any>,
   models: string[] = TEXT_MODELS,
   { retryBusy = true, timeoutMs = 25000 }: { retryBusy?: boolean; timeoutMs?: number } = {}
 ) {
   let lastErr: any = null;
-  for (const model of models) {
+  const usable = models.filter((m) => (exhaustedUntil.get(m) || 0) < Date.now());
+  for (const model of usable.length ? usable : models) {
     for (let attempt = 0; attempt < (retryBusy ? 2 : 1); attempt++) {
       try {
         // Cap each attempt so one slow model cannot stall the conversation
@@ -72,6 +77,11 @@ async function generateWithFallback(
         ]);
       } catch (err: any) {
         lastErr = err;
+        if (/PerDay/i.test(String(err?.message || ''))) {
+          exhaustedUntil.set(model, Date.now() + 60 * 60 * 1000);
+          console.warn(`Model ${model}: daily quota used up — skipping it for an hour`);
+          break;
+        }
         console.warn(`Model ${model} attempt ${attempt + 1} failed:`, String(err?.message || '').slice(0, 140));
         if (!isTransientError(err)) {
           // Same key and billing apply to every model, so stop trying
@@ -87,6 +97,7 @@ async function generateWithFallback(
 
 // Smart Apply & Autofill (document intelligence, unified profile, form filling)
 app.use('/api/autofill', createAutofillRouter(generateWithFallback));
+app.use('/api/learn', createLearnRouter(generateWithFallback));
 app.use(autofillErrorHandler);
 
 // Health check endpoint

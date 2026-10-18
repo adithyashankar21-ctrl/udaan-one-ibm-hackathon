@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BadgeCheck, Briefcase, Clock, ExternalLink, GraduationCap, Layers, Rocket } from 'lucide-react';
+import { ArrowRight, BadgeCheck, BookOpen, Briefcase, Clock, Code2, ExternalLink, GraduationCap, Layers, Rocket } from 'lucide-react';
 import { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { NSQF_COURSES } from '../../data/nsqfCourses';
 import { SchemesPage } from './SchemesPage';
@@ -16,11 +16,12 @@ interface SkillsPageProps {
 }
 
 /** Segmented switch shared by the two halves of "Skills & Opportunities". */
-export const OpportunityTabs: React.FC<{ current: 'skills' | 'enterprise'; onNavigate?: (mode: ChannelMode) => void }> = ({ current, onNavigate }) =>
+export const OpportunityTabs: React.FC<{ current: 'skills' | 'learning' | 'enterprise'; onNavigate?: (mode: ChannelMode) => void }> = ({ current, onNavigate }) =>
   onNavigate ? (
-    <div role="tablist" aria-label="Skills and opportunities" className="inline-flex rounded-2xl border border-line bg-white p-1">
+    <div role="tablist" aria-label="Skills and opportunities" className="inline-flex max-w-full overflow-x-auto rounded-2xl border border-line bg-white p-1">
       {[
         { id: 'skills' as const, label: 'Training & jobs', icon: Briefcase },
+        { id: 'learning' as const, label: 'Learning Hub', icon: BookOpen },
         { id: 'enterprise' as const, label: 'Start a business', icon: Rocket },
       ].map((tab) => (
         <button
@@ -28,7 +29,7 @@ export const OpportunityTabs: React.FC<{ current: 'skills' | 'enterprise'; onNav
           role="tab"
           aria-selected={current === tab.id}
           onClick={() => onNavigate(tab.id)}
-          className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors ${current === tab.id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
+          className={`inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-colors ${current === tab.id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
         >
           <tab.icon className="h-4 w-4" aria-hidden /> {tab.label}
         </button>
@@ -53,6 +54,25 @@ export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, ...props }) 
             Skill India Digital Hub before enrolling.
           </p>
         </header>
+
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate('learning')}
+            className="surface-dark group flex w-full flex-col gap-4 rounded-[22px] p-5 text-left text-white transition hover:-translate-y-0.5 hover:shadow-lift sm:flex-row sm:items-center sm:p-6"
+          >
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-saffron to-teal text-navy">
+              <Code2 className="h-7 w-7" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-saffron">New · Learning Hub</span>
+              <span className="mt-1 block text-lg font-bold">Learn Python, C, Java, web development and more — free, with an AI tutor</span>
+              <span className="mt-1 block text-sm text-white/70">Lessons for every subtopic, code you can run, and step-by-step answers to your doubts.</span>
+            </span>
+            <span className="btn btn-accent shrink-0">
+              Open Learning Hub <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
+            </span>
+          </button>
+        )}
 
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Filter by sector">
           {sectors.map((s) => (

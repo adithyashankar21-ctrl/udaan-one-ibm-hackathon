@@ -15,6 +15,7 @@ import { SiteHeader, UdaanOneLogo } from './components/shell/SiteHeader';
 import { HomePage } from './components/pages/HomePage';
 import { SchemesPage } from './components/pages/SchemesPage';
 import { SkillsPage } from './components/pages/SkillsPage';
+import { LearningHubPage } from './components/pages/LearningHubPage';
 import { EnterprisePage } from './components/pages/EnterprisePage';
 import { ApplicationsPage } from './components/pages/ApplicationsPage';
 import { DocumentsPage } from './components/pages/DocumentsPage';
@@ -328,6 +329,8 @@ export default function App() {
           />
         )}
 
+        {currentChannel === 'learning' && <LearningHubPage langConfig={langConfig} onNavigate={setCurrentChannel} />}
+
         {currentChannel === 'enterprise' && (
           <EnterprisePage
             profile={userProfile}
@@ -523,6 +526,7 @@ export default function App() {
                 ['schemes', 'Explore Schemes'],
                 ['documents', 'Documents & certificates'],
                 ['skills', 'Skills & Opportunities'],
+                ['learning', 'Learning Hub'],
                 ['enterprise', 'Start a business'],
                 ['smart_apply', 'Smart Apply'],
                 ['applications', 'My Applications'],

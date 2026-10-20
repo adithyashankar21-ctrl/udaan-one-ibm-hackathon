@@ -60,6 +60,7 @@ export const OutputStep: React.FC<Props> = ({ t, draft, fieldsHash, onDraft, onG
   const blockers = [
     ...(draft.missing.length ? [{ label: `${draft.missing.length} required detail(s) missing`, step: 2 }] : []),
     ...(draft.conflicts.length ? [{ label: `${draft.conflicts.length} detail(s) need you to choose the right value`, step: 2 }] : []),
+    ...(draft.documents.some((d) => d.id === 'photo' && !d.have) ? [{ label: 'Add your passport-size photo — it is printed on the form', step: 1 }] : []),
   ];
 
   return (

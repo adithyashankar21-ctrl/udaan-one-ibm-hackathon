@@ -41,6 +41,33 @@ export async function prepareFile(file: File): Promise<UploadFile> {
   }
 }
 
+/**
+ * Turn a picked or captured photo into a passport-size (35 × 45 mm) JPEG: upright, cropped to
+ * that shape around the centre (keeping more above the face than below), 420 × 540 px.
+ */
+export async function preparePassportPhoto(file: File): Promise<UploadFile> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+  } catch {
+    throw new Error('This photo format cannot be opened here. Please use a JPG or PNG photo.');
+  }
+  const target = 35 / 45;
+  let sw = bitmap.width;
+  let sh = bitmap.height;
+  if (sw / sh > target) sw = sh * target;
+  else sh = sw / target;
+  const sx = (bitmap.width - sw) / 2;
+  // Portrait selfies have the face in the upper part — crop more from the bottom
+  const sy = Math.max(0, Math.min(bitmap.height - sh, (bitmap.height - sh) * 0.35));
+  const canvas = document.createElement('canvas');
+  canvas.width = 420;
+  canvas.height = 540;
+  canvas.getContext('2d')!.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return { name: 'photo.jpg', mimeType: 'image/jpeg', dataBase64: await toBase64(await canvasToJpeg(canvas)) };
+}
+
 /** Encode a captured camera frame, applying the chosen rotation (degrees clockwise). */
 export async function canvasToUpload(source: HTMLCanvasElement, rotation: number, name: string): Promise<UploadFile> {
   const turn = ((rotation % 360) + 360) % 360;

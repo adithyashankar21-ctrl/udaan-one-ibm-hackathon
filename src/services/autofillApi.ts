@@ -112,6 +112,8 @@ export interface SessionState {
   retentionDays: number;
   profile?: { fields: Partial<Record<ProfileKey, FieldInfo>>; conflicts: Conflict[] };
   documents?: DocRecord[];
+  /** The applicant's photo (shared by all applications); the image itself comes from photoBlob(). */
+  photo?: { checks: DocCheck[]; usable: boolean; width: number; height: number; uploadedAt: number } | null;
   drafts?: DraftSummary[];
 }
 
@@ -159,6 +161,8 @@ export interface FieldView {
   questionHi?: string;
   help?: string;
   sensitive?: boolean;
+  /** Missing, but these not-yet-uploaded documents would fill it. */
+  fillableBy?: string[];
 }
 
 export interface RequirementView {
@@ -171,6 +175,7 @@ export interface RequirementView {
   docIds: string[];
   satisfiedBy: string[];
   rejected: Array<{ docId: string; label: string; reason: string }>;
+  warnings: string[];
   accepted: string[];
   manual: boolean;
   note?: string;
@@ -228,6 +233,13 @@ export const autofillApi = {
   confirmDocument: (id: string, values: Record<string, string>) =>
     call<SessionState & { errors: Record<string, string> }>(`/documents/${id}/confirm`, { method: 'POST', json: { values } }),
   deleteDocument: (id: string) => call<SessionState>(`/documents/${id}`, { method: 'DELETE', json: {} }),
+
+  uploadPhoto: (file: UploadFile) => call<SessionState>('/photo', { method: 'POST', json: { files: [file] } }),
+  deletePhoto: () => call<SessionState>('/photo', { method: 'DELETE', json: {} }),
+  async photoBlob(): Promise<Blob | null> {
+    const res = await fetch(`${BASE}/photo`, { credentials: 'same-origin' });
+    return res.ok ? res.blob() : null;
+  },
 
   startDraft: (schemeId: string, channel: string) => call<SessionState & { draft: DraftView }>('/drafts', { method: 'POST', json: { schemeId, channel } }),
   getDraft: (id: string) => call<{ draft: DraftView; fieldsHash: string }>(`/drafts/${id}`),

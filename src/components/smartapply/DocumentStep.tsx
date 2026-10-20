@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRightCircle, Camera, CheckCircle2, Circle, FileText, RotateCw, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind } from '../../data/autofillSchema';
 import type { SmartApplyStrings } from '../../data/smartApplyStrings';
 import { autofillApi, type DocCheck, type DocRecord, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { Alert, EmptyState, Spinner, StatusPill, UploadZone } from '../ui/kit';
 import { CameraScanner } from './CameraScanner';
+import { PhotoCard } from './PhotoCard';
 import { ConfidenceBadge } from './badges';
 import { prepareFile } from './media';
 
@@ -26,6 +27,7 @@ interface Props {
   t: SmartApplyStrings;
   draft: DraftView;
   documents: DocRecord[];
+  photo: SessionState['photo'];
   previews: Record<string, Preview[]>;
   onPreviews: (docId: string, previews: Preview[]) => void;
   onSession: (s: SessionState) => void;
@@ -116,7 +118,8 @@ const docPill = (d: DocRecord) =>
     <StatusPill tone="success">Passed checks</StatusPill>
   );
 
-export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, onPreviews, onSession, onRefreshDraft }) => {
+export const DocumentStep: React.FC<Props> = ({ t, draft, documents, photo, previews, onPreviews, onSession, onRefreshDraft }) => {
+  const photoRef = useRef<HTMLElement>(null);
   const [hint, setHint] = useState<DocKind | ''>('');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -206,7 +209,7 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
           {draft.documents.map((d) => (
             <li key={d.id}>
               <button
-                onClick={() => !d.manual && setHint(d.kind as DocKind)}
+                onClick={() => (d.id === 'photo' ? photoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : !d.manual && setHint(d.kind as DocKind))}
                 disabled={d.manual}
                 className={`flex min-h-12 w-full flex-col gap-1.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-default ${
                   d.have ? 'border-green/30 bg-green-50' : hint === d.kind && !d.manual ? 'border-navy bg-white' : 'border-line bg-white hover:border-navy-700/40'
@@ -236,11 +239,18 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                     {d.rejected.map((r) => `${r.label} uploaded but not usable: ${r.reason}`).join(' · ')}
                   </span>
                 )}
+                {d.warnings?.map((w) => (
+                  <span key={w} className="flex items-start gap-1 pl-7 text-xs font-semibold text-saffron-600">
+                    <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /> {w}
+                  </span>
+                ))}
               </button>
             </li>
           ))}
         </ul>
       </section>
+
+      <PhotoCard ref={photoRef} photo={photo} onSession={onSession} onChanged={onRefreshDraft} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* Left: add + preview */}

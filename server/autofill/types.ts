@@ -117,6 +117,19 @@ export interface Draft {
   officialForm?: OfficialForm;
 }
 
+/**
+ * The applicant's passport-size photo, printed on every form. Unlike documents it has to be
+ * kept (encrypted, with the rest of the session) so it can be placed on the PDF.
+ */
+export interface ApplicantPhoto {
+  mime: 'image/jpeg' | 'image/png';
+  dataB64: string;
+  width: number;
+  height: number;
+  checks: DocCheck[];
+  uploadedAt: number;
+}
+
 export interface SessionData {
   hash: string;
   createdAt: number;
@@ -124,5 +137,6 @@ export interface SessionData {
   consent?: { version: string; at: number };
   profile: ProfileState;
   documents: DocumentRecord[];
+  photo?: ApplicantPhoto;
   drafts: Draft[];
 }

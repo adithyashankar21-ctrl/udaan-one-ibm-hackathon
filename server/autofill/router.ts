@@ -6,7 +6,8 @@
  *  - Every state-changing request must carry the X-Udaan-Client header (blocks cross-site
  *    form posts; no CORS is enabled, so other origins cannot add it).
  *  - Nothing personal is stored until the person gives consent; documents are processed
- *    in memory and discarded; Aadhaar is kept as the last 4 digits only.
+ *    in memory and discarded; Aadhaar is kept as the last 4 digits only. The applicant's
+ *    photo is the one image kept (encrypted in the session) so it can be printed on forms.
  *  - The helpline can resume a draft only with its reference + PIN, gets a short-lived
  *    token for that one draft, and never sees field values.
  *  - Errors are logged without request bodies or document contents.
@@ -14,11 +15,12 @@
 import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, type DocKind, type FormFieldSpec, type ProfileKey } from '../../src/data/autofillSchema';
-import { IngestError, checkFiles } from './ingest';
+import { IngestError, checkFiles, checkPdfs } from './ingest';
 import { checkDocument, isUsable } from './checks';
 import { buildDraftView, fieldsHash } from './mapping';
 import { extractDocument, interpretAnswer, type Generate } from './ocr';
 import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
+import { checkPhoto } from './photo';
 import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
 import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
 import {
@@ -139,6 +141,9 @@ function sessionPayload(session: SessionData | null) {
     retentionDays: RETENTION_DAYS,
     profile: profileView(session),
     documents: session.documents.map((d) => documentView(session, d)),
+    photo: session.photo
+      ? { checks: session.photo.checks, usable: isUsable(session.photo.checks), width: session.photo.width, height: session.photo.height, uploadedAt: session.photo.uploadedAt }
+      : null,
     drafts: session.drafts.map((d) => draftSummary(session, d)),
   };
 }
@@ -302,6 +307,7 @@ export function createAutofillRouter(generate: Generate) {
       let files;
       try {
         files = checkFiles(req.body?.files);
+        await checkPdfs(files);
       } catch (err) {
         if (err instanceof IngestError) return res.status(400).json({ error: err.message });
         throw err;
@@ -312,6 +318,10 @@ export function createAutofillRouter(generate: Generate) {
         extracted = await extractDocument(generate, files, hint);
       } catch (err) {
         logError('documents/extract', err);
+        // Gemini rejects files it cannot open with a 400; only quota / outage errors mean "busy"
+        if (/INVALID_ARGUMENT|"code":\s*400/.test(String((err as any)?.message || err))) {
+          return res.status(400).json({ error: 'This file could not be opened by the document reader. Please upload a photo or screenshot of the document instead.' });
+        }
         return res.status(502).json({ error: 'The document reader is busy or unavailable right now. Please try again in a minute, or type the details instead.' });
       } finally {
         // Drop the original bytes as soon as extraction is done
@@ -342,6 +352,44 @@ export function createAutofillRouter(generate: Generate) {
       session.documents.push(doc);
       saveSession(session);
       res.json({ document: documentView(session, doc), ...sessionPayload(session) });
+    })
+  );
+
+  /* Applicant photo — one per session, printed on every application */
+
+  router.post(
+    '/photo',
+    withSession(async (req, res, session) => {
+      if (!docLimit(session.hash)) return res.status(429).json({ error: 'Too many uploads in the last hour. Please wait a little.' });
+      let photo;
+      try {
+        const [file] = checkFiles(req.body?.files);
+        photo = await checkPhoto(generate, file);
+      } catch (err) {
+        if (err instanceof IngestError) return res.status(400).json({ error: err.message });
+        throw err;
+      }
+      session.photo = { ...photo, uploadedAt: Date.now() };
+      saveSession(session);
+      res.json(sessionPayload(session));
+    })
+  );
+
+  router.get(
+    '/photo',
+    withSession((_req, res, session) => {
+      if (!session.photo) return res.status(404).json({ error: 'No photo' });
+      res.setHeader('Content-Type', session.photo.mime);
+      res.send(Buffer.from(session.photo.dataB64, 'base64'));
+    })
+  );
+
+  router.delete(
+    '/photo',
+    withSession((_req, res, session) => {
+      session.photo = undefined;
+      saveSession(session);
+      res.json(sessionPayload(session));
     })
   );
 
@@ -546,9 +594,10 @@ export function createAutofillRouter(generate: Generate) {
       }
 
       const useOfficial = req.body?.use === 'official' && draft.officialForm;
+      const photo = session.photo && isUsable(session.photo.checks) ? session.photo : undefined;
       const bytes = useOfficial
-        ? await fillOfficialForm(draft.officialForm!, view, aadhaarFull)
-        : await generateDraftPdf(view, { aadhaarFull, approvedAt: draft.approval?.at });
+        ? await fillOfficialForm(draft.officialForm!, view, aadhaarFull, photo)
+        : await generateDraftPdf(view, { aadhaarFull, approvedAt: draft.approval?.at, photo });
       aadhaarFull = undefined;
 
       draft.generated = { at: Date.now(), kind: useOfficial ? (draft.officialForm!.kind === 'acroform' ? 'official_acroform' : 'official_overlay') : 'draft_pdf' };

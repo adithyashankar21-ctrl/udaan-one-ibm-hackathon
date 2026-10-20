@@ -160,7 +160,7 @@ export const SCHEME_CATALOG: CatalogScheme[] = [
     officialUrl: 'https://scholarships.gov.in',
     officialLabel: 'scholarships.gov.in',
     roadmapPriority: 0,
-    rules: { scOnly: true },
+    rules: { scOnly: true, maxAnnualIncome: 250000 },
   },
   {
     id: 'ncs',

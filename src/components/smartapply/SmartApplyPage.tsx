@@ -43,6 +43,9 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, Preview[]>>({});
+  /** Answer questions a document could fill, instead of uploading it. */
+  const [typeInstead, setTypeInstead] = useState(false);
+  useEffect(() => setTypeInstead(false), [draft?.id]);
   const topRef = useRef<HTMLDivElement>(null);
   const hasConsent = Boolean(session?.consent);
 
@@ -366,6 +369,9 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   }
 
   /* ── Workspace for one application ─────────────────────────────── */
+  // Ask what no document shows first; details a pending document would fill wait for the upload
+  const fromDocs = draft.missing.filter((f) => f.fillableBy?.length);
+  const questions = typeInstead ? draft.missing : draft.missing.filter((f) => !f.fillableBy?.length);
   const docsNeeded = draft.documents.filter((d) => d.required && !d.have && !d.manual).length;
   const steps = [
     { label: t.steps[0], done: true },
@@ -421,6 +427,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
             t={t}
             draft={draft}
             documents={session.documents || []}
+            photo={session.photo}
             previews={previews}
             onPreviews={(id, p) => setPreviews((all) => ({ ...all, [id]: p }))}
             onSession={onSession}
@@ -432,13 +439,38 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <div className="space-y-6">
               <ConflictResolver t={t} conflicts={draft.conflicts} onSession={onSession} onResolved={refreshDraft} />
+              {fromDocs.length > 0 && !typeInstead && (
+                <section className="card border-teal/30 bg-teal-50/40 p-5 sm:p-6" aria-labelledby="fromdocs-h">
+                  <h2 id="fromdocs-h" className="font-bold text-navy">These will be read from your documents</h2>
+                  <p className="mt-1 text-sm text-muted">No need to type them — upload the document and they are filled in for you.</p>
+                  <ul className="mt-3 space-y-1.5 text-sm">
+                    {Object.entries(
+                      fromDocs.reduce<Record<string, string[]>>((acc, f) => {
+                        const by = f.fillableBy!.slice(0, 2).join(' or ');
+                        (acc[by] ||= []).push(f.label);
+                        return acc;
+                      }, {})
+                    ).map(([by, labels]) => (
+                      <li key={by}>
+                        <span className="font-semibold text-navy">{by}:</span> <span className="text-muted">{labels.join(', ')}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button onClick={() => setStep(1)} className="btn btn-primary btn-sm">Upload documents</button>
+                    <button onClick={() => setTypeInstead(true)} className="btn btn-ghost btn-sm">I don’t have them — let me answer</button>
+                  </div>
+                </section>
+              )}
+              {(questions.length > 0 || fromDocs.length === 0 || typeInstead) && (
               <section className="card p-5 sm:p-6" aria-labelledby="q-h">
-                <h2 id="q-h" className="text-lg font-bold text-navy">{draft.missing.length ? t.questionsTitle : t.questionsDone}</h2>
-                <p className="mt-1 text-sm text-muted">We only ask for what is not already in your profile or documents. Type, tap or speak your answer.</p>
+                <h2 id="q-h" className="text-lg font-bold text-navy">{questions.length ? t.questionsTitle : t.questionsDone}</h2>
+                <p className="mt-1 text-sm text-muted">Only what your documents cannot tell us — about this application and your situation. Type, tap or speak your answer.</p>
                 <div className="mt-4">
-                  <MissingQuestions t={t} language={language} speechLocale={langConfig.speechLocale} questions={draft.missing} onAnswer={answer} />
+                  <MissingQuestions t={t} language={language} speechLocale={langConfig.speechLocale} questions={questions} onAnswer={answer} />
                 </div>
               </section>
+              )}
             </div>
             <aside className="card h-fit p-5" aria-labelledby="known-h">
               <h2 id="known-h" className="font-bold text-navy">Already filled</h2>

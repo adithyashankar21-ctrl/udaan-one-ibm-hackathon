@@ -274,6 +274,8 @@ const ask = (
   opts: Partial<FormFieldSpec> = {}
 ): FormFieldSpec => ({ key, label, type, question, required: true, section: PROPOSAL, ...opts });
 
+const YES_NO = ['Yes', 'No'];
+
 export const VISHWAKARMA_TRADES = [
   'Carpenter (Suthar)',
   'Boat Maker',
@@ -317,6 +319,11 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('proposedActivity', 'Proposed activity / asset', 'text', 'What business or asset do you want support for (for example, a tailoring unit or a goat-rearing unit)?'),
       ask('projectCost', 'Estimated project cost (₹)', 'money', 'Roughly how much will the whole project cost, in rupees? Use the quotation if you have one.'),
       ask('bankLoan', 'Bank loan planned, if any (₹)', 'money', 'Are you also taking a bank loan? If yes, how much? Say "none" if not.', { required: false }),
+      ask('experienceYears', 'Experience in this activity (years)', 'number', 'How many years have you worked in this kind of activity? Say 0 if you are new to it.'),
+      ask('bplHousehold', 'Below Poverty Line (BPL) household', 'select', 'Is your family on the Below Poverty Line (BPL) list?', { options: YES_NO }),
+      ask('earlierAssistance', 'Earlier help for the same asset', 'select', 'Have you already received government help for this same asset or business before?', { options: YES_NO }),
+      p('maritalStatus', IDENTITY, false),
+      p('disability', IDENTITY, false),
       ...bank(),
     ],
   },
@@ -336,6 +343,12 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       p('rationCardNumber', SOCIAL, false),
       ask('trade', 'Traditional trade', 'select', 'Which traditional trade do you practise?', { options: VISHWAKARMA_TRADES, help: 'Only the 18 notified trades are covered.' }),
       ask('yearsInTrade', 'Years working in this trade', 'number', 'How many years have you worked in this trade?'),
+      ask('workPlace', 'Where you work', 'select', 'Where do you mostly do your work?', { options: ['At home', 'Own shop / workshop', 'At customers’ places', 'Travelling / mobile'] }),
+      ask('selfEmployed', 'Self-employed in this trade', 'select', 'Do you work for yourself in this trade (not as a salaried employee)?', { options: YES_NO, help: 'The scheme is for self-employed artisans working with their hands and tools.' }),
+      ask('familyGovtJob', 'Family member in government service', 'select', 'Does anyone in your family (you, your spouse or unmarried children) have a government job?', { options: YES_NO, help: 'Families with a member in government service are not covered.' }),
+      ask('recentLoan', 'Loan under PMEGP, PM SVANidhi or MUDRA in the last 5 years', 'select', 'In the last 5 years, have you taken a loan under PMEGP, PM SVANidhi or MUDRA for self-employment?', { options: YES_NO }),
+      ask('familyRegistered', 'Someone in the family already registered', 'select', 'Has anyone else in your family already registered under PM Vishwakarma?', { options: YES_NO, help: 'Only one member of a family can register.' }),
+      p('maritalStatus', IDENTITY),
       ...bank(),
     ],
   },
@@ -353,7 +366,10 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       p('education', SOCIAL),
       p('existingSkills', PROPOSAL, false),
       ask('preferredCourse', 'Course / job role wanted', 'text', 'Which course or job role do you want training for?'),
-      ask('rpl', 'Already experienced? (Recognition of Prior Learning)', 'select', 'Do you already have work experience in this skill and want it certified (RPL)?', { options: ['Yes', 'No'], required: false }),
+      ask('rpl', 'Already experienced? (Recognition of Prior Learning)', 'select', 'Do you already have work experience in this skill and want it certified (RPL)?', { options: YES_NO, required: false }),
+      ask('employmentStatus', 'Current work status', 'select', 'What are you doing now?', { options: ['Looking for work', 'Working (salaried)', 'Self-employed', 'Studying', 'School / college dropout'] }),
+      ask('trainingLocation', 'Where you can attend training', 'text', 'In which town or district can you go for training?'),
+      ask('languages', 'Languages you can study in', 'text', 'In which languages can you read and study?', { required: false }),
       ...bank(false),
     ],
   },
@@ -372,6 +388,9 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       p('annualFamilyIncome', SOCIAL),
       p('education', SOCIAL),
       ask('preferredCourse', 'Course wanted', 'text', 'Which skill course would you like to join?'),
+      ask('targetGroup', 'Target group', 'select', 'Which of these groups do you belong to?', { options: ['Scheduled Caste', 'Other Backward Class', 'Economically Backward Class', 'Denotified / Nomadic Tribe', 'Safai Karamchari / waste picker'], help: 'PM-DAKSH is only for these groups.' }),
+      ask('employmentStatus', 'Current work status', 'select', 'What are you doing now?', { options: ['Looking for work', 'Working (salaried)', 'Self-employed', 'Studying'] }),
+      ask('trainingLocation', 'Where you can attend training', 'text', 'In which town or district can you go for training?'),
       ...bank(false),
     ],
   },
@@ -393,6 +412,11 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('businessStatus', 'New or existing business', 'select', 'Is this a new business or one you already run?', { options: ['New business', 'Existing business'] }),
       ask('loanCategory', 'MUDRA category', 'select', 'Which loan size: Shishu (small), Kishore (medium) or Tarun (larger)?', { options: ['Shishu', 'Kishore', 'Tarun', 'Tarun Plus'] }),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
+      ask('businessAddress', 'Business address', 'text', 'Where is your business, or where will it be? Say "same as home" if it is at home.'),
+      ask('yearsInBusiness', 'Years the business has run', 'number', 'For how many years has the business been running? Say 0 for a new business.', { required: false }),
+      ask('monthlyTurnover', 'Monthly sales (₹)', 'money', 'Roughly how much does the business sell in a month? Say 0 for a new business.', { required: false }),
+      ask('existingLoans', 'Other loans running', 'select', 'Do you have any other loan running from a bank, NBFC or moneylender?', { options: YES_NO }),
+      ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a bank loan (been a defaulter)?', { options: YES_NO, help: 'Lenders do not give MUDRA loans to defaulters.' }),
       ...bank(),
     ],
   },
@@ -413,6 +437,10 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('proposedActivity', 'Proposed activity', 'text', 'What activity or business do you want the loan for?'),
       ask('projectCost', 'Estimated project cost (₹)', 'money', 'Roughly how much will the project cost, in rupees?'),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
+      ask('ownContribution', 'Your own contribution (₹)', 'money', 'How much of your own money can you put into the project? Say 0 if none.', { required: false }),
+      ask('experienceYears', 'Experience in this activity (years)', 'number', 'How many years have you worked in this kind of activity? Say 0 if you are new to it.'),
+      ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a bank or corporation loan (been a defaulter)?', { options: YES_NO }),
+      p('occupation', PROPOSAL),
       ...bank(),
     ],
   },
@@ -429,9 +457,13 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ...address(true),
       p('panNumber', IDENTITY),
       p('socialCategory', SOCIAL),
-      ask('enterpriseActivity', 'New enterprise activity', 'text', 'What new enterprise do you want to start (manufacturing, services, trading or agri-allied)?'),
+      ask('enterpriseActivity', 'New enterprise activity', 'text', 'What new enterprise do you want to start?'),
+      ask('enterpriseSector', 'Sector', 'select', 'Which sector is it in?', { options: ['Manufacturing', 'Services', 'Trading', 'Agri-allied'] }),
+      ask('greenfield', 'First venture (greenfield)', 'select', 'Is this a brand-new enterprise, not an expansion of a business you already run?', { options: YES_NO, help: 'Stand-Up India is only for new (greenfield) enterprises.' }),
+      ask('ownershipShare', 'Your share of ownership (%)', 'number', 'What percentage of the business will be owned by you (or by SC/ST or women owners together)?', { help: 'At least 51% must be held by SC/ST or women entrepreneurs.' }),
       ask('projectCost', 'Estimated project cost (₹)', 'money', 'Roughly how much will the project cost, in rupees?'),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
+      ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a bank loan (been a defaulter)?', { options: YES_NO }),
       ...bank(),
     ],
   },
@@ -454,6 +486,12 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('institution', 'College / institution name', 'text', 'Which college or institution are you studying in?'),
       ask('course', 'Course', 'text', 'Which course are you studying?'),
       ask('courseYear', 'Year of study', 'number', 'Which year of the course are you in?'),
+      ask('lastExamPercent', 'Marks in the last exam (%)', 'number', 'What percentage of marks did you get in your last exam?'),
+      ask('hostelStatus', 'Hosteller or day scholar', 'select', 'Do you stay in a hostel, or live at home and travel to college?', { options: ['Hosteller', 'Day scholar'] }),
+      ask('annualFees', 'Yearly course fee (₹)', 'money', 'How much is the yearly fee for your course, in rupees?'),
+      ask('otherScholarship', 'Getting another scholarship', 'select', 'Are you getting any other scholarship this year?', { options: YES_NO, help: 'You can hold only one post-matric scholarship at a time.' }),
+      ask('parentOccupation', 'Parent’s / guardian’s occupation', 'text', 'What work does your father, mother or guardian do?'),
+      p('disability', IDENTITY, false),
       ...bank(),
     ],
   },
@@ -473,6 +511,12 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       p('existingSkills', PROPOSAL),
       ask('jobPreference', 'Kind of job wanted', 'text', 'What kind of job are you looking for?'),
       ask('preferredLocation', 'Preferred work location', 'text', 'Where would you like to work?', { required: false }),
+      ask('experienceYears', 'Work experience (years)', 'number', 'How many years of work experience do you have? Say 0 if none.'),
+      ask('employmentStatus', 'Current work status', 'select', 'Are you working right now?', { options: ['Not working', 'Working, looking for a change', 'Studying'] }),
+      ask('languages', 'Languages known', 'text', 'Which languages can you speak, read or write?'),
+      ask('expectedSalary', 'Expected monthly salary (₹)', 'money', 'What monthly salary are you looking for?', { required: false }),
+      p('maritalStatus', IDENTITY, false),
+      p('disability', IDENTITY, false),
     ],
   },
 ];
@@ -483,12 +527,16 @@ export const FORM_SCHEMA_MAP: Record<string, SchemeFormSchema> = Object.fromEntr
 
 /** Requirements for a form: explicit proof categories, or one per listed document. */
 export function requirementsFor(schema: SchemeFormSchema): Requirement[] {
-  if (schema.requirements) return schema.requirements;
-  return [
+  const list = schema.requirements || [
     ...schema.requiredDocs.map((k) => ({ ...PROOF.one(k, true), label: DOC_KINDS[k].label, labelHi: DOC_KINDS[k].labelHi })),
     ...schema.optionalDocs.map((k) => ({ ...PROOF.one(k, false), label: DOC_KINDS[k].label, labelHi: DOC_KINDS[k].labelHi })),
   ];
+  // Every application carries the applicant's photo
+  return list.some((r) => r.id === 'photo') ? list : [...list, PROOF.photo()];
 }
+
+/** Profile details a document of this kind can fill in. */
+export const docKindsYielding = (key: ProfileKey): DocKind[] => (Object.keys(DOC_KINDS) as DocKind[]).filter((k) => DOC_KINDS[k].yields.includes(key));
 
 /** Mask everything but the last four digits of an Aadhaar number. */
 export function maskAadhaar(last4: string): string {

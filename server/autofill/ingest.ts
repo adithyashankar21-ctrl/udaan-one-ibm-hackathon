@@ -47,3 +47,32 @@ export function checkFiles(files: unknown): CheckedFile[] {
     return { name: safeName(f.name), mime, buffer };
   });
 }
+
+/**
+ * PDFs the document reader cannot open: password-protected ones (e-Aadhaar downloads and
+ * many bank statements are locked) and damaged or empty files. Caught here so the person
+ * hears what is wrong instead of a generic failure.
+ */
+export async function checkPdfs(files: CheckedFile[]): Promise<void> {
+  const { PDFDocument } = await import('pdf-lib');
+  for (const f of files) {
+    if (f.mime !== 'application/pdf') continue;
+    const raw = f.buffer.toString('latin1');
+    // The encryption dictionary is always stored unencrypted in the trailer / xref stream
+    if (/\/Encrypt\s*(<<|\d+\s+\d+\s+R)/.test(raw)) {
+      throw new IngestError(
+        `${f.name} is password-protected, so it cannot be read. e-Aadhaar PDFs are locked — open it, then upload a screenshot or scan it with the camera.`
+      );
+    }
+    let pages = 0;
+    try {
+      pages = (await PDFDocument.load(f.buffer, { updateMetadata: false, ignoreEncryption: true })).getPageCount();
+    } catch {
+      pages = -1;
+    }
+    if (pages < 0 || !raw.slice(-2048).includes('%%EOF')) {
+      throw new IngestError(`${f.name} could not be opened — the PDF looks damaged or incomplete. Try downloading it again, or upload a photo of the document.`);
+    }
+    if (pages === 0) throw new IngestError(`${f.name} has no pages. Please upload the full document.`);
+  }
+}

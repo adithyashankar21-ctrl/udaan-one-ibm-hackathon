@@ -74,7 +74,19 @@ export interface DocRecord {
   quality: { overall: 'good' | 'fair' | 'poor'; rotated: boolean; issues: string[] };
   fields: ExtractedField[];
   extraFields: Array<{ label: string; value: string }>;
+  validity?: { issueDate?: string; expiryDate?: string };
+  requestedKind?: string;
+  /** Automatic checks; a 'fail' means the document does not count towards any application. */
+  checks: DocCheck[];
+  usable: boolean;
   uploadedAt: number;
+}
+
+export interface DocCheck {
+  id: string;
+  status: 'pass' | 'warn' | 'fail';
+  label: string;
+  detail?: string;
 }
 
 export interface DraftSummary {
@@ -158,6 +170,7 @@ export interface RequirementView {
   have: boolean;
   docIds: string[];
   satisfiedBy: string[];
+  rejected: Array<{ docId: string; label: string; reason: string }>;
   accepted: string[];
   manual: boolean;
   note?: string;

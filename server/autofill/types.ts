@@ -66,9 +66,21 @@ export interface DocumentRecord {
   quality: { overall: 'good' | 'fair' | 'poor'; rotated: boolean; issues: string[] };
   fields: ExtractedField[];
   extraFields: Array<{ label: string; value: string }>;
+  /** Dates printed on the document (DD/MM/YYYY): issue / bill date and expiry. */
+  validity?: { issueDate?: string; expiryDate?: string };
+  /** The type the person said they were uploading, if they chose one. */
+  requestedKind?: DocKind;
   uploadedAt: number;
   /** Original files are discarded after extraction; only these fields are kept. */
   originalRetained: false;
+}
+
+/** One automatic check on an uploaded document. 'fail' means it cannot be used for the application. */
+export interface DocCheck {
+  id: string;
+  status: 'pass' | 'warn' | 'fail';
+  label: string;
+  detail?: string;
 }
 
 export interface Placement {

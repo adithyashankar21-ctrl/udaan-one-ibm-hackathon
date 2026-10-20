@@ -8,7 +8,7 @@ import { Type } from '@google/genai';
 import { DOC_KINDS, PROFILE_FIELDS, PROFILE_FIELD_MAP, type DocKind, type ProfileKey } from '../../src/data/autofillSchema';
 import type { CheckedFile } from './ingest';
 import type { DocumentRecord, ExtractedField } from './types';
-import { isValidAadhaar, normalise, scrubAadhaar } from './validate';
+import { isValidAadhaar, normalise, normaliseDate, scrubAadhaar } from './validate';
 
 export type Generate = (request: Record<string, any>, models?: string[], opts?: { retryBusy?: boolean; timeoutMs?: number }) => Promise<any>;
 
@@ -44,6 +44,13 @@ const RESPONSE_SCHEMA = {
         required: ['key', 'confidence', 'legible'],
       },
     },
+    validity: {
+      type: Type.OBJECT,
+      properties: {
+        issueDate: { type: Type.STRING, nullable: true },
+        expiryDate: { type: Type.STRING, nullable: true },
+      },
+    },
     extraFields: {
       type: Type.ARRAY,
       items: { type: Type.OBJECT, properties: { label: { type: Type.STRING }, value: { type: Type.STRING } }, required: ['label', 'value'] },
@@ -54,7 +61,7 @@ const RESPONSE_SCHEMA = {
 
 const PROMPT = `You read Indian identity and supporting documents for an application-filling assistant.
 
-1. Identify the document type: aadhaar (UIDAI Aadhaar card or e-Aadhaar), pan (Income Tax PAN card), voter (Election Commission voter ID / EPIC), passport (Indian passport), dl (driving licence or learner's licence), birth (birth certificate), income (income certificate), caste (caste / community certificate), residence (residence / domicile / nativity certificate), bank (bank passbook first page, cancelled cheque or bank statement), utility (electricity, water, gas, landline or broadband bill), education (marksheet, school leaving or degree certificate), ration (ration card), or other (anything else, e.g. hospital birth record, salary slip, affidavit).
+1. Identify the document type: aadhaar (UIDAI Aadhaar card or e-Aadhaar), pan (Income Tax PAN card), voter (Election Commission voter ID / EPIC), passport (Indian passport), dl (driving licence or learner's licence), birth (birth certificate), income (income certificate), caste (caste / community certificate), residence (residence / domicile / nativity certificate), bank (bank passbook first page, cancelled cheque or bank statement), utility (electricity, water, gas, landline or broadband bill), education (marksheet, school leaving or degree certificate), ration (ration card), foreign_passport (a passport issued by any country other than India), oci (Overseas Citizen of India card), pio (Person of Indian Origin card), or other (anything else, e.g. hospital birth record, salary slip, affidavit).
 2. Read these fields when the document shows them (use exactly these keys):
    fullName — the document holder's name, in English as printed (if only a regional-script name is printed, transliterate it to English and say so in note)
    fatherSpouseName — from "S/O", "D/O", "W/O", "C/O", "Father's name" or "Husband's name"
@@ -70,12 +77,15 @@ const PROMPT = `You read Indian identity and supporting documents for an applica
    education — the qualification, board/university and year, e.g. "10th (SSLC), State Board, 2010"
    bankAccountNumber, bankIfsc, bankName, bankBranch, rationCardNumber
    motherName, placeOfBirth, maritalStatus (Single, Married, Widowed, Divorced or Separated)
-   passportNumber, voterIdNumber (EPIC number), drivingLicenceNumber
+   passportNumber (Indian passport only), voterIdNumber (EPIC number), drivingLicenceNumber (also for a learner's licence)
+   nationality — the holder's citizenship as printed (foreign passport, OCI or PIO card)
+   foreignPassportNumber — the number of a non-Indian passport (also printed on OCI / PIO cards); pioCardNumber
    For a utility bill, fullName is the name the bill is addressed to. Note the bill date in extraFields.
 3. For every field: confidence from 0 to 1. If text is blurred, cut off or unreadable, set legible=false and value=null. Never guess digits or letters.
 4. quality: overall good/fair/poor, rotated=true if pages are sideways or upside down (still read them), and issues such as glare, blur, cropped edges or a missing page.
-5. extraFields: up to 6 other useful printed details (issuing authority, issue date, validity), as label/value. Do not repeat the fields above.
-6. Do not judge whether the document is genuine. Only report what is printed.`;
+5. validity: issueDate — the date of issue (for a bill, the bill date; for a certificate, the date it was issued) and expiryDate — the "valid till" / "date of expiry", both as DD/MM/YYYY. Use null when not printed.
+6. extraFields: up to 6 other useful printed details (issuing authority, place of issue), as label/value. Do not repeat the fields above.
+7. Do not judge whether the document is genuine. Only report what is printed.`;
 
 export async function extractDocument(generate: Generate, files: CheckedFile[], hint?: DocKind): Promise<Omit<DocumentRecord, 'id' | 'uploadedAt'>> {
   const parts: any[] = files.map((f) => ({ inlineData: { mimeType: f.mime, data: f.buffer.toString('base64') } }));
@@ -149,6 +159,9 @@ export async function extractDocument(generate: Generate, files: CheckedFile[], 
     .map((x: any) => ({ label: String(x?.label || '').slice(0, 60), value: scrubAadhaar(String(x?.value || '')).slice(0, 120) }))
     .filter((x: any) => x.label && x.value);
 
+  const dateOf = (v: unknown) => (typeof v === 'string' && v.trim() ? normaliseDate(v) || undefined : undefined);
+  const validity = { issueDate: dateOf(raw.validity?.issueDate), expiryDate: dateOf(raw.validity?.expiryDate) };
+
   const q = raw.quality || {};
   return {
     kind,
@@ -163,6 +176,8 @@ export async function extractDocument(generate: Generate, files: CheckedFile[], 
     },
     fields,
     extraFields,
+    validity: validity.issueDate || validity.expiryDate ? validity : undefined,
+    requestedKind: hint && hint !== 'other' && KIND_KEYS.includes(hint) ? hint : undefined,
     originalRetained: false,
   };
 }

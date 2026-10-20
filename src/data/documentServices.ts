@@ -1,6 +1,6 @@
 import type { CatalogScheme } from './schemeCatalog';
 
-export type DocumentCategory = 'identity' | 'certificate' | 'civil' | 'licence' | 'registration';
+export type DocumentCategory = 'identity' | 'certificate' | 'civil' | 'licence' | 'registration' | 'overseas';
 
 export const DOCUMENT_CATEGORIES: Array<{ id: DocumentCategory; label: string }> = [
   { id: 'identity', label: 'Identity documents' },
@@ -8,6 +8,7 @@ export const DOCUMENT_CATEGORIES: Array<{ id: DocumentCategory; label: string }>
   { id: 'civil', label: 'Birth & family records' },
   { id: 'licence', label: 'Licences' },
   { id: 'registration', label: 'Worker & welfare cards' },
+  { id: 'overseas', label: 'Overseas Indians (OCI / PIO)' },
 ];
 
 /** An official document or certificate service. Same shape as a scheme, so search, eligibility and cards reuse it. */
@@ -253,6 +254,86 @@ export const DOCUMENT_SERVICES: DocumentService[] = [
     roadmapPriority: 3,
     rules: {},
   },
+  {
+    id: 'doc-aadhaar-new',
+    kind: 'document',
+    category: 'identity',
+    name: 'Aadhaar — new enrolment',
+    ministry: 'Unique Identification Authority of India (UIDAI)',
+    filters: [],
+    summary: 'Get your first Aadhaar: enrolment is free and done in person at an Aadhaar centre, where your photo, fingerprints and iris are captured.',
+    keySupport: ['Free enrolment at Aadhaar Seva Kendras and enrolment centres', 'Appointments can be booked online', 'Baal Aadhaar for children below 5'],
+    eligibilitySummary: 'Residents of India of any age who do not already have an Aadhaar. Adults enrolling for the first time may go through extra verification.',
+    documents: ['Proof of identity', 'Proof of address', 'Proof of date of birth (to record a verified date)'],
+    steps: ['Book an appointment or walk in to an enrolment centre', 'Fill the enrolment form and show original documents', 'Give photo, fingerprints and iris scan', 'Keep the enrolment slip and download e-Aadhaar once generated'],
+    officialUrl: 'https://uidai.gov.in',
+    officialLabel: 'uidai.gov.in',
+    officialForm: 'Aadhaar Enrolment Form',
+    online: 'office',
+    roadmapPriority: 3,
+    rules: {},
+  },
+  {
+    id: 'doc-dl',
+    kind: 'document',
+    category: 'licence',
+    name: 'Driving licence (permanent)',
+    ministry: 'Ministry of Road Transport & Highways (Parivahan Sarathi)',
+    filters: [],
+    summary: 'After holding a learner’s licence for 30 days, apply for the permanent licence and take the driving test at the RTO.',
+    keySupport: ['Online application and test slot booking on Sarathi', 'Apply within 180 days of the learner’s licence being issued'],
+    eligibilitySummary: 'Holders of a valid learner’s licence for the same vehicle class; minimum age 18 for cars and geared motorcycles.',
+    documents: ['Valid learner’s licence', 'Proof of age', 'Proof of address', 'Photo and signature'],
+    steps: ['Apply on Sarathi with your learner’s licence number', 'Pay the fee and book a driving test slot', 'Take the driving test at the RTO', 'Licence is posted or downloadable after you pass'],
+    officialUrl: 'https://sarathi.parivahan.gov.in',
+    officialLabel: 'sarathi.parivahan.gov.in',
+    officialForm: 'Form 4 (driving licence)',
+    online: 'online-and-office',
+    roadmapPriority: 2,
+    rules: { minAge: 18 },
+  },
+  {
+    id: 'doc-oci',
+    kind: 'document',
+    category: 'overseas',
+    name: 'OCI card (Overseas Citizen of India)',
+    ministry: 'Ministry of Home Affairs (via Indian Missions and FRROs)',
+    filters: [],
+    summary: 'Lifelong visa-free travel to India for foreign citizens of Indian origin and foreign spouses of Indian citizens or OCI cardholders.',
+    keySupport: ['Apply online, then submit at the Indian Mission / Post abroad or the FRRO in India', 'Multiple-entry, lifelong visa for visiting India'],
+    eligibilitySummary: 'Foreign citizens who were, or whose parents, grandparents or great-grandparents were, Indian citizens; or foreign spouses of Indian citizens / OCI cardholders (marriage registered and lasting at least 2 years). Not available if you or your parents or grandparents were ever citizens of Pakistan or Bangladesh.',
+    documents: ['Current foreign passport', 'Proof of Indian origin', 'Proof of present address', 'Surrender / renunciation certificate if you held an Indian passport', 'Photo and signature'],
+    steps: ['Fill the OCI form on the OCI Services portal', 'Upload photo, signature and documents', 'Pay the fee and submit to the Mission / Post or FRRO', 'Collect the OCI card and keep your passport details updated'],
+    officialUrl: 'https://ociservices.gov.in',
+    officialLabel: 'ociservices.gov.in',
+    officialForm: 'Online OCI registration',
+    online: 'online-and-office',
+    roadmapPriority: 2,
+    rules: {},
+  },
+  {
+    id: 'doc-pio-oci',
+    kind: 'document',
+    category: 'overseas',
+    name: 'PIO card → OCI card conversion',
+    ministry: 'Ministry of Home Affairs (via Indian Missions and FRROs)',
+    filters: [],
+    summary: 'New PIO cards are no longer issued — the PIO scheme was merged into OCI in January 2015. PIO cardholders convert to an OCI card.',
+    keySupport: ['Apply under PIO-to-OCI conversion on the OCI Services portal', 'Check the portal for the current deadline and fee'],
+    eligibilitySummary: 'Holders of a PIO card issued before the scheme was merged into OCI.',
+    documents: ['PIO card', 'Current foreign passport', 'Proof of present address', 'Photo and signature'],
+    steps: ['Choose PIO to OCI conversion on the OCI Services portal', 'Fill the form and upload documents', 'Submit to the Mission / Post or FRRO', 'Collect the OCI card'],
+    officialUrl: 'https://ociservices.gov.in',
+    officialLabel: 'ociservices.gov.in',
+    officialForm: 'PIO-to-OCI conversion (online)',
+    online: 'online-and-office',
+    roadmapPriority: 2,
+    rules: {},
+  },
 ];
+
+/** Related services sit together: new Aadhaar after the update, the permanent licence after the learner's. */
+const ORDER = ['doc-pan', 'doc-voter', 'doc-passport', 'doc-aadhaar-update', 'doc-aadhaar-new', 'doc-income', 'doc-caste', 'doc-domicile', 'doc-birth', 'doc-learner-dl', 'doc-dl', 'doc-eshram', 'doc-udid', 'doc-ration', 'doc-oci', 'doc-pio-oci'];
+DOCUMENT_SERVICES.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
 
 export const DOCUMENT_SERVICE_MAP: Record<string, DocumentService> = Object.fromEntries(DOCUMENT_SERVICES.map((d) => [d.id, d]));

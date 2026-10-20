@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { DOC_KINDS, FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, requirementsFor, type FormFieldSpec, type SchemeFormSchema } from '../../src/data/autofillSchema';
 import { DOCUMENT_SERVICES } from '../../src/data/documentServices';
 import { SCHEME_CATALOG } from '../../src/data/schemeCatalog';
+import { cannotMeet, checkDocument, isUsable } from './checks';
 import type { Draft, FieldRecord, SessionData } from './types';
 import { ageFromDob, checkValue, normaliseMoney } from './validate';
 import { eligibilityFor, schemeInfo } from './schemes';
@@ -39,7 +40,14 @@ export interface FieldView {
 export const REVIEW_CONFIDENCE = 0.85;
 
 function recordFor(session: SessionData, draft: Draft, spec: FormFieldSpec): FieldRecord | undefined {
-  return spec.profileKey ? session.profile.fields[spec.profileKey] : draft.answers[spec.key];
+  if (spec.profileKey) return session.profile.fields[spec.profileKey];
+  if (draft.answers[spec.key] || !spec.fromDoc) return draft.answers[spec.key];
+  // Dates printed on an uploaded document (e.g. passport expiry) fill the field until answered
+  const { kinds, attr } = spec.fromDoc;
+  const doc = [...session.documents].reverse().find((d) => kinds.includes(d.kind) && d.validity?.[attr]);
+  return doc
+    ? { value: doc.validity![attr]!, source: 'document', sourceLabel: doc.label, status: 'extracted', docId: doc.id, confidence: 0.9, updatedAt: doc.uploadedAt }
+    : undefined;
 }
 
 export function buildFields(session: SessionData, draft: Draft): FieldView[] {
@@ -60,7 +68,7 @@ export function buildFields(session: SessionData, draft: Draft): FieldView[] {
     } else if (!value) {
       state = 'missing';
     } else {
-      const problem = checkValue(spec.type, value, spec.options);
+      const problem = checkValue(spec.type, value, spec.options, spec.profileKey === 'dateOfBirth');
       if (problem) {
         state = 'invalid';
         issues.push(problem);
@@ -69,6 +77,11 @@ export function buildFields(session: SessionData, draft: Draft): FieldView[] {
         issues.push('Read from your document with low certainty — please check it.');
       } else {
         state = 'filled';
+      }
+      const m = spec.fromDoc?.attr === 'expiryDate' ? value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/) : null;
+      if (m && new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime() < Date.now()) {
+        state = 'review';
+        issues.push('This date has passed — the document has expired. Renew it before applying.');
       }
       if (spec.type === 'aadhaar' && rec?.checksumOk === false) {
         state = 'review';
@@ -151,6 +164,8 @@ export interface RequirementView {
   docIds: string[];
   /** Labels of the uploaded documents that satisfy this requirement. */
   satisfiedBy: string[];
+  /** Uploaded documents of an accepted type that cannot be used, and why. */
+  rejected: Array<{ docId: string; label: string; reason: string }>;
   /** Everything commonly accepted for it. */
   accepted: string[];
   /** Cannot be read automatically (photo, signature, medical form). */
@@ -201,8 +216,16 @@ export function buildDraftView(session: SessionData, draft: Draft): DraftView {
   const approved = Boolean(draft.approval && draft.approval.fieldsHash === hash);
   const approvalStale = Boolean(draft.approval && !approved);
 
+  const checked = new Map(session.documents.map((d) => [d.id, checkDocument(d, session.profile)]));
   const documents: RequirementView[] = requirementsFor(schema).map((r) => {
-    const docs = session.documents.filter((d) => r.anyOf.includes(d.kind));
+    const candidates = session.documents.filter((d) => r.anyOf.includes(d.kind));
+    const rejected: RequirementView['rejected'] = [];
+    const docs = candidates.filter((d) => {
+      const failed = checked.get(d.id)!.find((c) => c.status === 'fail');
+      const reason = failed ? failed.label.toLowerCase() : cannotMeet(d, r.id);
+      if (reason) rejected.push({ docId: d.id, label: d.label, reason });
+      return !reason && isUsable(checked.get(d.id)!);
+    });
     const readable = r.anyOf.filter((k) => !(k === 'other' && r.alsoAccepted?.length)).map((k) => DOC_KINDS[k].label);
     return {
       id: r.id,
@@ -213,6 +236,7 @@ export function buildDraftView(session: SessionData, draft: Draft): DraftView {
       have: docs.length > 0,
       docIds: docs.map((d) => d.id),
       satisfiedBy: Array.from(new Set(docs.map((d) => d.label))),
+      rejected,
       accepted: [...readable, ...(r.alsoAccepted || [])],
       manual: Boolean(r.manual),
       note: r.note,

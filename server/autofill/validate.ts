@@ -186,13 +186,13 @@ export function normalise(type: FieldType, raw: string, options?: string[]): Nor
 }
 
 /** Validation of a stored value (used when building the form). Returns a problem or null. */
-export function checkValue(type: FieldType, value: string, options?: string[]): string | null {
+export function checkValue(type: FieldType, value: string, options?: string[], isBirthDate = false): string | null {
   if (!value) return null;
   if (type === 'aadhaar') return /^XXXX XXXX \d{4}$/.test(value) ? null : 'Aadhaar must be stored masked';
   if (type === 'text') return null;
   const n = normalise(type, value, options);
   if (!n.ok) return n.error || 'Invalid value';
-  if (type === 'date') {
+  if (type === 'date' && isBirthDate) {
     const age = ageFromDob(n.value!);
     if (age !== null && (age < 10 || age > 100)) return `This date gives an age of ${age} — please check it`;
   }

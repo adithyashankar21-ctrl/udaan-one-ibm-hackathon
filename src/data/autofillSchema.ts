@@ -54,7 +54,10 @@ export type ProfileKey =
   | 'maritalStatus'
   | 'passportNumber'
   | 'voterIdNumber'
-  | 'drivingLicenceNumber';
+  | 'drivingLicenceNumber'
+  | 'nationality'
+  | 'foreignPassportNumber'
+  | 'pioCardNumber';
 
 export interface ProfileFieldDef {
   key: ProfileKey;
@@ -102,6 +105,9 @@ export const PROFILE_FIELDS: ProfileFieldDef[] = [
   { key: 'maritalStatus', label: 'Marital status', labelHi: 'वैवाहिक स्थिति', type: 'select', options: ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'], question: 'What is your marital status?', questionHi: 'आपकी वैवाहिक स्थिति क्या है?' },
   { key: 'passportNumber', label: 'Passport number', labelHi: 'पासपोर्ट नंबर', type: 'text', question: 'What is your passport number? Say "none" if you do not have one.', questionHi: 'आपका पासपोर्ट नंबर क्या है? न हो तो "नहीं" कहें।' },
   { key: 'voterIdNumber', label: 'Voter ID (EPIC) number', labelHi: 'मतदाता पहचान (EPIC) नंबर', type: 'text', question: 'What is your voter ID (EPIC) number? Say "none" if you do not have one.', questionHi: 'आपका मतदाता पहचान पत्र (EPIC) नंबर क्या है? न हो तो "नहीं" कहें।' },
+  { key: 'nationality', label: 'Present nationality', labelHi: 'वर्तमान नागरिकता', type: 'text', question: 'Which country are you a citizen of now?', questionHi: 'अभी आप किस देश के नागरिक हैं?' },
+  { key: 'foreignPassportNumber', label: 'Foreign passport number', labelHi: 'विदेशी पासपोर्ट नंबर', type: 'text', question: 'What is the number of your current foreign passport?', questionHi: 'आपके वर्तमान विदेशी पासपोर्ट का नंबर क्या है?' },
+  { key: 'pioCardNumber', label: 'PIO card number', labelHi: 'PIO कार्ड नंबर', type: 'text', question: 'What is the number on your PIO card?', questionHi: 'आपके PIO कार्ड का नंबर क्या है?' },
   { key: 'drivingLicenceNumber', label: 'Driving licence number', labelHi: 'ड्राइविंग लाइसेंस नंबर', type: 'text', question: 'What is your driving licence number? Say "none" if you do not have one.', questionHi: 'आपका ड्राइविंग लाइसेंस नंबर क्या है? न हो तो "नहीं" कहें।' },
 ];
 
@@ -123,6 +129,9 @@ export type DocKind =
   | 'dl'
   | 'birth'
   | 'utility'
+  | 'foreign_passport'
+  | 'oci'
+  | 'pio'
   | 'other';
 
 export const DOC_KINDS: Record<DocKind, { label: string; labelHi: string; yields: ProfileKey[] }> = {
@@ -139,6 +148,9 @@ export const DOC_KINDS: Record<DocKind, { label: string; labelHi: string; yields
   dl: { label: 'Driving licence', labelHi: 'ड्राइविंग लाइसेंस', yields: ['fullName', 'dateOfBirth', 'fatherSpouseName', 'drivingLicenceNumber', 'addressLine', 'district', 'state', 'pincode'] },
   birth: { label: 'Birth certificate', labelHi: 'जन्म प्रमाण पत्र', yields: ['fullName', 'dateOfBirth', 'gender', 'placeOfBirth', 'fatherSpouseName', 'motherName'] },
   utility: { label: 'Utility bill (electricity / water / gas / phone)', labelHi: 'बिजली/पानी/गैस/फ़ोन बिल', yields: ['fullName', 'addressLine', 'district', 'state', 'pincode'] },
+  foreign_passport: { label: 'Foreign passport', labelHi: 'विदेशी पासपोर्ट', yields: ['fullName', 'dateOfBirth', 'gender', 'placeOfBirth', 'nationality', 'foreignPassportNumber'] },
+  oci: { label: 'OCI card', labelHi: 'OCI कार्ड', yields: ['fullName', 'dateOfBirth', 'nationality', 'foreignPassportNumber'] },
+  pio: { label: 'PIO card', labelHi: 'PIO कार्ड', yields: ['fullName', 'dateOfBirth', 'gender', 'nationality', 'foreignPassportNumber', 'pioCardNumber', 'fatherSpouseName'] },
   other: { label: 'Other document', labelHi: 'अन्य दस्तावेज़', yields: [] },
 };
 
@@ -192,6 +204,8 @@ export interface FormFieldSpec {
   question?: string;
   questionHi?: string;
   help?: string;
+  /** Filled from a date printed on an uploaded document of one of these kinds, when not answered. */
+  fromDoc?: { kinds: DocKind[]; attr: 'issueDate' | 'expiryDate' };
 }
 
 export interface SchemeFormSchema {
@@ -839,6 +853,160 @@ function DOCUMENT_FORM_SCHEMAS(): SchemeFormSchema[] {
         p('occupation', SOCIAL, false),
         ask('members', 'Family members (name, age, relation)', 'text', 'List the family members to add — each person’s name, age and relation to you.', { section: PARENTS }),
         ...bank(false),
+      ],
+    }),
+    doc({
+      schemeId: 'doc-aadhaar-new',
+      formTitle: 'Aadhaar — new enrolment',
+      officialForm: 'Aadhaar Enrolment Form (filled at the enrolment centre)',
+      basis: 'Aadhaar enrolment is free and done in person at an Aadhaar enrolment centre, where photo, fingerprints and iris are captured. You can book an appointment online. Children below 5 get Baal Aadhaar linked to a parent’s Aadhaar. Adults enrolling for the first time may go through extra verification.',
+      submission: { mode: 'office', where: 'Aadhaar enrolment centre / Aadhaar Seva Kendra (appointment can be booked online)', url: 'https://uidai.gov.in', integration: 'none' },
+      requirements: [
+        { ...PROOF.identity(), anyOf: ['passport', 'pan', 'voter', 'dl', 'ration'] },
+        { ...PROOF.address(), anyOf: ['passport', 'voter', 'dl', 'bank', 'utility', 'ration', 'residence'] },
+        { ...PROOF.birth(false), anyOf: ['birth', 'education', 'passport', 'pan'], label: 'Proof of date of birth (to record a verified date)' },
+      ],
+      keywords: ['new aadhaar', 'new aadhar', 'aadhaar enrolment', 'aadhaar enrollment', 'aadhar enrolment', 'aadhar enrollment', 'make aadhaar', 'make aadhar', 'aadhaar banwana', 'aadhar banwana', 'baal aadhaar', 'नया आधार', 'आधार बनवाना', 'आधार नामांकन', 'புதிய ஆதார்', 'కొత్త ఆధార్', 'ಹೊಸ ಆಧಾರ್', 'പുതിയ ആധാർ'],
+      fields: [
+        p('fullName', IDENTITY),
+        p('dateOfBirth', IDENTITY),
+        p('gender', IDENTITY),
+        { ...p('fatherSpouseName', PARENTS), required: false, label: "Father's / husband's / guardian's name" },
+        p('mobile', ADDRESS),
+        p('email', ADDRESS, false),
+        p('addressLine', ADDRESS),
+        p('district', ADDRESS),
+        p('state', ADDRESS),
+        p('pincode', ADDRESS),
+        ask('dobType', 'Date of birth is', 'select', 'Do you have a document proving your date of birth (Verified), or is it from memory (Declared)?', {
+          section: ABOUT,
+          options: ['Verified', 'Declared', 'Approximate'],
+        }),
+      ],
+    }),
+    doc({
+      schemeId: 'doc-dl',
+      formTitle: 'Driving licence (permanent) — application',
+      officialForm: 'Form 4 (driving licence) on Parivahan Sarathi',
+      basis: 'Apply on Parivahan Sarathi at least 30 days and within 180 days after your learner’s licence was issued, then take the driving test at the RTO. You need a valid learner’s licence for the same vehicle class.',
+      submission: { mode: 'portal', where: 'Parivahan Sarathi portal, then driving test at the RTO', url: 'https://sarathi.parivahan.gov.in', integration: 'none' },
+      requirements: [
+        { id: 'learner', label: 'Valid learner’s licence', labelHi: 'वैध लर्निंग लाइसेंस', anyOf: ['dl'], required: true },
+        { ...PROOF.birth(), label: 'Proof of age' },
+        PROOF.address(),
+        PROOF.photo('Photo and signature (uploaded on Sarathi)'),
+        { id: 'medical', label: 'Medical certificate (Form 1A), when required', anyOf: [], required: false, manual: true, note: 'Needed for transport vehicles and for applicants above a certain age — check Sarathi.' },
+      ],
+      keywords: ['permanent licence', 'permanent license', 'permanent driving licence', 'permanent driving license', 'driving test', 'pakka licence', 'pakka license', 'form 4', 'स्थायी लाइसेंस', 'पक्का लाइसेंस', 'ड्राइविंग टेस्ट'],
+      fields: [
+        p('fullName', IDENTITY),
+        p('dateOfBirth', IDENTITY),
+        p('gender', IDENTITY),
+        { ...p('fatherSpouseName', PARENTS), label: "Father's / husband's name" },
+        p('aadhaar', IDENTITY),
+        { ...p('drivingLicenceNumber', ABOUT), label: 'Learner’s licence number' },
+        ask('learnerIssued', 'Learner’s licence issue date', 'date', 'On what date was your learner’s licence issued?', { section: ABOUT, fromDoc: { kinds: ['dl'], attr: 'issueDate' } }),
+        ask('learnerValidTill', 'Learner’s licence valid till', 'date', 'Until what date is your learner’s licence valid?', { section: ABOUT, fromDoc: { kinds: ['dl'], attr: 'expiryDate' } }),
+        ask('vehicleClass', 'Vehicle class', 'select', 'Which vehicle class is the test for?', {
+          section: ABOUT,
+          options: ['Motorcycle without gear', 'Motorcycle with gear', 'Light motor vehicle (car)', 'Transport vehicle'],
+        }),
+        p('mobile', ADDRESS),
+        p('email', ADDRESS, false),
+        p('addressLine', ADDRESS),
+        p('district', ADDRESS),
+        p('state', ADDRESS),
+        p('pincode', ADDRESS),
+        ask('bloodGroup', 'Blood group', 'select', 'What is your blood group? Choose "Not known" if you are not sure.', {
+          section: ABOUT,
+          required: false,
+          options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Not known'],
+        }),
+      ],
+    }),
+    doc({
+      schemeId: 'doc-oci',
+      formTitle: 'OCI card — new registration',
+      officialForm: 'Online OCI registration on the OCI Services portal',
+      basis: 'For foreign citizens of Indian origin and foreign spouses of Indian citizens or OCI cardholders. Fill the form online, upload photo, signature and documents, then submit to the Indian Mission / Post abroad or the FRRO in India. People who are or whose parents or grandparents were citizens of Pakistan or Bangladesh are not eligible.',
+      submission: { mode: 'portal', where: 'OCI Services portal, then the Indian Mission / Post abroad or FRRO in India', url: 'https://ociservices.gov.in', integration: 'none' },
+      requirements: [
+        { id: 'foreign-passport', label: 'Current foreign passport', labelHi: 'वर्तमान विदेशी पासपोर्ट', anyOf: ['foreign_passport'], required: true, note: 'Commonly needs at least 6 months of validity left.' },
+        {
+          id: 'indian-origin',
+          label: 'Proof of Indian origin',
+          labelHi: 'भारतीय मूल का प्रमाण',
+          anyOf: ['passport', 'pio', 'birth', 'residence', 'other'],
+          required: true,
+          alsoAccepted: ['Your or your parent’s / grandparent’s Indian passport', 'Domicile certificate', 'Marriage certificate (spouse of an Indian citizen or OCI cardholder)'],
+        },
+        {
+          id: 'renunciation',
+          label: 'Surrender / renunciation certificate (if you held an Indian passport)',
+          anyOf: ['other'],
+          required: false,
+          alsoAccepted: ['Surrender certificate issued by the Indian Mission', 'Renunciation certificate'],
+        },
+        { ...PROOF.address(), anyOf: ['utility', 'bank', 'dl', 'other'], label: 'Proof of present address', alsoAccepted: ['Utility bill, bank statement or driving licence from your country of residence'] },
+        PROOF.photo('Square photo (51 × 51 mm, white background) and signature, uploaded online'),
+      ],
+      keywords: ['oci', 'oci card', 'overseas citizen', 'overseas citizenship', 'oci registration', 'ओसीआई', 'ओसीआई कार्ड', 'प्रवासी भारतीय नागरिक'],
+      fields: [
+        p('fullName', IDENTITY),
+        p('dateOfBirth', IDENTITY),
+        p('placeOfBirth', IDENTITY),
+        p('gender', IDENTITY),
+        p('maritalStatus', IDENTITY),
+        p('nationality', IDENTITY),
+        ask('previousNationality', 'Previous nationality (if any)', 'text', 'Were you a citizen of any other country before, for example India? Say "none" if not.', { section: IDENTITY, required: false }),
+        p('foreignPassportNumber', 'Passport details'),
+        ask('passportIssueDate', 'Passport date of issue', 'date', 'What is the date of issue of your foreign passport?', { section: 'Passport details', fromDoc: { kinds: ['foreign_passport'], attr: 'issueDate' } }),
+        ask('passportExpiryDate', 'Passport date of expiry', 'date', 'What is the date of expiry of your foreign passport?', { section: 'Passport details', fromDoc: { kinds: ['foreign_passport'], attr: 'expiryDate' } }),
+        ask('passportIssuePlace', 'Place of issue', 'text', 'Where was your foreign passport issued?', { section: 'Passport details' }),
+        { ...p('passportNumber', 'Passport details', false), label: 'Old Indian passport number (if any)' },
+        ask('originBasis', 'Basis of eligibility', 'select', 'On what basis are you applying for OCI?', {
+          section: ABOUT,
+          options: ['I was an Indian citizen', 'Parent was an Indian citizen', 'Grandparent was an Indian citizen', 'Great-grandparent was an Indian citizen', 'Spouse of an Indian citizen / OCI cardholder', 'PIO cardholder'],
+        }),
+        { ...p('fatherSpouseName', PARENTS), label: "Father's name" },
+        p('motherName', PARENTS),
+        ask('spouseName', 'Spouse’s name and nationality (if married)', 'text', 'If you are married, what is your spouse’s name and nationality? Say "none" if not married.', { section: PARENTS, required: false }),
+        p('occupation', ABOUT),
+        p('mobile', ADDRESS),
+        p('email', ADDRESS),
+        { ...p('addressLine', ADDRESS), label: 'Present address' },
+        ask('indianAddress', 'Address in India (if any)', 'text', 'Do you have an address in India? Give it, or say "none".', { section: ADDRESS, required: false }),
+      ],
+    }),
+    doc({
+      schemeId: 'doc-pio-oci',
+      formTitle: 'PIO card — conversion to OCI card',
+      officialForm: 'PIO-to-OCI conversion on the OCI Services portal',
+      basis: 'New PIO cards are no longer issued: the PIO scheme was merged into OCI in January 2015. PIO cardholders apply on the OCI Services portal under PIO-to-OCI conversion. Check the portal for the current deadline and fee.',
+      submission: { mode: 'portal', where: 'OCI Services portal (PIO to OCI conversion), then the Indian Mission / Post abroad or FRRO in India', url: 'https://ociservices.gov.in', integration: 'none' },
+      requirements: [
+        { id: 'pio-card', label: 'Your PIO card', labelHi: 'आपका PIO कार्ड', anyOf: ['pio'], required: true },
+        { id: 'foreign-passport', label: 'Current foreign passport', labelHi: 'वर्तमान विदेशी पासपोर्ट', anyOf: ['foreign_passport'], required: true, note: 'Commonly needs at least 6 months of validity left.' },
+        { ...PROOF.address(), anyOf: ['utility', 'bank', 'dl', 'other'], label: 'Proof of present address', alsoAccepted: ['Utility bill, bank statement or driving licence from your country of residence'] },
+        PROOF.photo('Square photo (51 × 51 mm, white background) and signature, uploaded online'),
+      ],
+      keywords: ['pio', 'pio card', 'person of indian origin', 'pio to oci', 'pio conversion', 'convert pio', 'पीआईओ', 'पीआईओ कार्ड', 'भारतीय मूल के व्यक्ति'],
+      fields: [
+        p('fullName', IDENTITY),
+        p('dateOfBirth', IDENTITY),
+        p('placeOfBirth', IDENTITY),
+        p('gender', IDENTITY),
+        p('nationality', IDENTITY),
+        p('pioCardNumber', IDENTITY),
+        p('foreignPassportNumber', 'Passport details'),
+        ask('passportIssueDate', 'Passport date of issue', 'date', 'What is the date of issue of your foreign passport?', { section: 'Passport details', fromDoc: { kinds: ['foreign_passport'], attr: 'issueDate' } }),
+        ask('passportExpiryDate', 'Passport date of expiry', 'date', 'What is the date of expiry of your foreign passport?', { section: 'Passport details', fromDoc: { kinds: ['foreign_passport'], attr: 'expiryDate' } }),
+        ask('passportIssuePlace', 'Place of issue', 'text', 'Where was your foreign passport issued?', { section: 'Passport details' }),
+        { ...p('fatherSpouseName', PARENTS), label: "Father's name" },
+        p('motherName', PARENTS),
+        p('mobile', ADDRESS),
+        p('email', ADDRESS),
+        { ...p('addressLine', ADDRESS), label: 'Present address' },
       ],
     }),
   ];

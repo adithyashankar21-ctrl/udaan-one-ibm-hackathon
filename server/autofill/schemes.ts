@@ -54,7 +54,7 @@ export const listSchemes = () => FORM_SCHEMAS.map((s) => schemeInfo(s.schemeId)!
  */
 /** Request verbs for documents ("I need a PAN card", "आधार में पता बदलना है"). */
 const DOC_ACTION_WORDS =
-  /\b(get|make|need|want|new|renew|update|correct|correction|change|issue|lost|duplicate|how)\b|बनवा|बनाना|चाहिए|अपडेट|बदल|सुधार|खो|வேண்டும்|மாற்ற|எப்படி|కావాలి|మార్చ|ఎలా|ಬೇಕು|ಬದಲ|ಹೇಗೆ|വേണം|മാറ്റ|എങ്ങനെ/i;
+  /\b(get|make|need|want|new|renew|update|correct|correction|change|issue|lost|duplicate|how|chahiye|chahie|banwana|banwani|banana|banani|convert)\b|बनवा|बनाना|चाहिए|अपडेट|बदल|सुधार|खो|வேண்டும்|மாற்ற|எப்படி|కావాలి|మార్చ|ఎలా|ಬೇಕು|ಬದಲ|ಹೇಗೆ|വേണം|മാറ്റ|എങ്ങനെ/i;
 
 export function detectIntentLocal(text: string): { wantsToApply: boolean; schemeId: string | null } {
   const t = (text || '').toLowerCase();

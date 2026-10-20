@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, type DocKind, type FormFieldSpec, type ProfileKey } from '../../src/data/autofillSchema';
 import { IngestError, checkFiles } from './ingest';
+import { checkDocument, isUsable } from './checks';
 import { buildDraftView, fieldsHash } from './mapping';
 import { extractDocument, interpretAnswer, type Generate } from './ocr';
 import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
@@ -35,7 +36,7 @@ import {
   sweepExpired,
   verifyPin,
 } from './store';
-import type { Candidate, Draft, FieldRecord, SessionData, SourceKind } from './types';
+import type { Candidate, DocumentRecord, Draft, FieldRecord, SessionData, SourceKind } from './types';
 import { hasNonLatin, isValidAadhaar, normalise, scrubAadhaar } from './validate';
 
 export const CONSENT_VERSION = '2026-10-17';
@@ -103,6 +104,12 @@ function profileView(session: SessionData) {
   };
 }
 
+/** A document with its automatic checks, computed fresh so expiry and cross-checks stay current. */
+function documentView(session: SessionData, d: DocumentRecord) {
+  const checks = checkDocument(d, session.profile);
+  return { ...d, checks, usable: isUsable(checks) };
+}
+
 function draftSummary(session: SessionData, d: Draft) {
   const v = buildDraftView(session, d);
   const required = v.documents.filter((x) => x.required && !x.manual);
@@ -131,7 +138,7 @@ function sessionPayload(session: SessionData | null) {
     consentVersion: CONSENT_VERSION,
     retentionDays: RETENTION_DAYS,
     profile: profileView(session),
-    documents: session.documents,
+    documents: session.documents.map((d) => documentView(session, d)),
     drafts: session.drafts.map((d) => draftSummary(session, d)),
   };
 }
@@ -311,8 +318,16 @@ export function createAutofillRouter(generate: Generate) {
         for (const f of files) f.buffer.fill(0);
       }
       const doc = { ...extracted, id: crypto.randomBytes(8).toString('hex'), uploadedAt: Date.now() };
+      // Someone else's document (e.g. a parent's passport) or one that failed a check must not
+      // overwrite the applicant's details; the person can still choose to use its values.
+      const before = checkDocument(doc, session.profile);
+      const holdBack = before.find((c) => (c.id === 'holder' && c.status !== 'pass') || (c.status === 'fail' && (c.id === 'number' || c.id === 'readable')));
       for (const f of doc.fields) {
         if (!f.value || !f.legible || f.confidence < 0.6) continue;
+        if (holdBack) {
+          f.note = f.note || (holdBack.id === 'holder' ? 'Not added to your application: this document has a different name.' : `Not added to your application: ${holdBack.label.toLowerCase()}.`);
+          continue;
+        }
         const r = mergeCandidate(session.profile, f.key, {
           value: f.value,
           source: 'document',
@@ -326,7 +341,7 @@ export function createAutofillRouter(generate: Generate) {
       }
       session.documents.push(doc);
       saveSession(session);
-      res.json({ document: doc, ...sessionPayload(session) });
+      res.json({ document: documentView(session, doc), ...sessionPayload(session) });
     })
   );
 

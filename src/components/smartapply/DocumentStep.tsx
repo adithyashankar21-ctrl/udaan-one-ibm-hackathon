@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Camera, CheckCircle2, Circle, FileText, RotateCw, ShieldCheck, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRightCircle, Camera, CheckCircle2, Circle, FileText, RotateCw, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind } from '../../data/autofillSchema';
 import type { SmartApplyStrings } from '../../data/smartApplyStrings';
-import { autofillApi, type DocRecord, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
+import { autofillApi, type DocCheck, type DocRecord, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { Alert, EmptyState, Spinner, StatusPill, UploadZone } from '../ui/kit';
 import { CameraScanner } from './CameraScanner';
 import { ConfidenceBadge } from './badges';
@@ -71,6 +71,50 @@ const DocPreview: React.FC<{ previews?: Preview[]; scanning?: boolean; label: st
     </div>
   );
 };
+
+const CHECK_META: Record<DocCheck['status'], { icon: React.ElementType; color: string; sr: string }> = {
+  pass: { icon: CheckCircle2, color: 'text-green', sr: 'Passed' },
+  warn: { icon: AlertTriangle, color: 'text-saffron-600', sr: 'Needs attention' },
+  fail: { icon: XCircle, color: 'text-coral-600', sr: 'Failed' },
+};
+
+/** The automatic checks run on one document, failures first. */
+const DocChecks: React.FC<{ doc: DocRecord }> = ({ doc }) => {
+  const order = { fail: 0, warn: 1, pass: 2 };
+  const checks = [...(doc.checks || [])].sort((a, b) => order[a.status] - order[b.status]);
+  if (!checks.length) return null;
+  return (
+    <section aria-label="Document checks" className={`mt-4 rounded-xl border p-3 ${doc.usable ? 'border-line bg-ivory' : 'border-coral/30 bg-coral-50'}`}>
+      <p className="text-sm font-bold text-navy">
+        {doc.usable ? 'Checks on this document' : 'This document cannot be used for your application'}
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {checks.map((c) => {
+          const m = CHECK_META[c.status];
+          return (
+            <li key={c.id} className="flex items-start gap-2 text-sm">
+              <m.icon className={`mt-0.5 h-4 w-4 shrink-0 ${m.color}`} aria-hidden />
+              <span>
+                <span className="sr-only">{m.sr}: </span>
+                <span className="font-semibold text-navy">{c.label}</span>
+                {c.detail && <span className="block text-xs text-muted">{c.detail}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
+const docPill = (d: DocRecord) =>
+  !d.usable ? (
+    <StatusPill tone="danger">Can’t use</StatusPill>
+  ) : d.checks?.some((c) => c.status === 'warn') ? (
+    <StatusPill tone="warning">Check</StatusPill>
+  ) : (
+    <StatusPill tone="success">Passed checks</StatusPill>
+  );
 
 export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, onPreviews, onSession, onRefreshDraft }) => {
   const [hint, setHint] = useState<DocKind | ''>('');
@@ -143,6 +187,8 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
   const selectedDoc = documents.find((d) => d.id === selected);
   const selectedJob = jobs.find((j) => String(j.id) === selected || (j.docId && j.docId === selected && j.phase !== 'done'));
   const failedJobs = jobs.filter((j) => j.phase === 'failed');
+  const formKeys = useMemo(() => new Set(draft.fields.map((f) => f.key)), [draft.fields]);
+  const heldBack = Boolean(selectedDoc?.checks?.some((c) => c.id === 'holder' && c.status !== 'pass'));
   const requiredMissing = useMemo(() => draft.documents.filter((d) => d.required && !d.have && !d.manual), [draft.documents]);
 
   return (
@@ -185,6 +231,11 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                     <>Any of: {d.accepted.join(' · ')}</>
                   )}
                 </span>
+                {!d.have && d.rejected?.length > 0 && (
+                  <span className="pl-7 text-xs font-semibold text-coral-600">
+                    {d.rejected.map((r) => `${r.label} uploaded but not usable: ${r.reason}`).join(' · ')}
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -250,11 +301,7 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                         {d.fields.filter((f) => f.value).length} details read · {d.pageCount} page{d.pageCount === 1 ? '' : 's'}
                       </span>
                     </span>
-                    {d.fields.some((f) => !f.legible || f.confidence < 0.85) ? (
-                      <StatusPill tone="warning">Check</StatusPill>
-                    ) : (
-                      <StatusPill tone="info">Read</StatusPill>
-                    )}
+                    {docPill(d)}
                   </button>
                 </li>
               ))}
@@ -286,6 +333,7 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                     <StatusPill tone="info" icon={ShieldCheck}>{t.notVerified}</StatusPill>
                     <ConfidenceBadge value={selectedDoc.kindConfidence} t={t} />
                     {selectedDoc.quality.rotated && <StatusPill tone="neutral" icon={RotateCw}>Rotated page read</StatusPill>}
+                    {selectedDoc.validity?.issueDate && <StatusPill tone="neutral">Issued {selectedDoc.validity.issueDate}</StatusPill>}
                     {selectedDoc.quality.overall !== 'good' && (
                       <StatusPill tone="warning" icon={AlertTriangle}>
                         Image quality: {selectedDoc.quality.overall}
@@ -298,6 +346,8 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                   <Trash2 className="h-4 w-4" aria-hidden /> {t.removeDoc}
                 </button>
               </div>
+
+              <DocChecks doc={selectedDoc} />
 
               <div className="mt-4">
                 <DocPreview previews={previews[selectedDoc.id]} label={selectedDoc.label} />
@@ -314,7 +364,10 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
                     <li key={f.key} className="py-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <label htmlFor={id} className="text-sm font-semibold text-navy">{def?.label || f.key}</label>
-                        {f.legible ? <ConfidenceBadge value={f.confidence} t={t} /> : <StatusPill tone="danger" icon={XCircle}>{t.unreadable}</StatusPill>}
+                        <span className="flex flex-wrap gap-1.5">
+                          {f.merged && formKeys.has(f.key) && <StatusPill tone="success" icon={ArrowRightCircle}>Filled into this application</StatusPill>}
+                          {f.legible ? <ConfidenceBadge value={f.confidence} t={t} /> : <StatusPill tone="danger" icon={XCircle}>{t.unreadable}</StatusPill>}
+                        </span>
                       </div>
                       <input
                         id={id}
@@ -347,8 +400,11 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, previews, o
               )}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button onClick={() => saveChecked(selectedDoc)} className="btn btn-success">
-                  <CheckCircle2 className="h-4 w-4" aria-hidden /> {t.saveChecked}
+                  <CheckCircle2 className="h-4 w-4" aria-hidden /> {heldBack ? 'Use these details for the applicant' : t.saveChecked}
                 </button>
+                {heldBack && (
+                  <span className="text-xs text-muted">Only if this is your own document. A parent’s or spouse’s document used as proof should not fill your details.</span>
+                )}
                 {saved === selectedDoc.id && (
                   <span role="status" className="text-sm font-semibold text-green animate-fade-up">
                     Saved — these details are now marked as checked by you.

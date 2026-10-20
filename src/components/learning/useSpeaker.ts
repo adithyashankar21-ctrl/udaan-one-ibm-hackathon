@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Text is spoken sentence by sentence (long single utterances get cut off in Chrome).
  */
 
-function pickVoice(locale: string) {
+export function pickVoice(locale: string) {
   const voices = window.speechSynthesis.getVoices();
   const lang = locale.toLowerCase();
   const base = lang.split('-')[0];

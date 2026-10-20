@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ChevronRight, ExternalLink, FileSearch, Mic, MicOff, ScanLine, Search, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AudioLines, ChevronRight, ExternalLink, FileSearch, Mic, MicOff, ScanLine, Search, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import type { Language, LanguageCode } from '../../types';
 import { getSmartApplyStrings } from '../../data/smartApplyStrings';
 import { autofillApi, type DraftView, type SchemeInfo, type SessionState } from '../../services/autofillApi';
@@ -10,6 +10,7 @@ import { MissingQuestions } from './MissingQuestions';
 import { OutputStep } from './OutputStep';
 import { ReviewStep } from './ReviewStep';
 import { useDictation } from './media';
+import { VoiceDocs } from './VoiceDocs';
 
 interface Props {
   language: LanguageCode;
@@ -46,6 +47,14 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   /** Answer questions a document could fill, instead of uploading it. */
   const [typeInstead, setTypeInstead] = useState(false);
   useEffect(() => setTypeInstead(false), [draft?.id]);
+  // Hands-free filling: spoken questions, then documents and photo by camera
+  const [questionVoice, setQuestionVoice] = useState(0);
+  const [docVoice, setDocVoice] = useState({ n: 0, afterQuestions: false });
+  const startDocVoice = (afterQuestions: boolean) => setDocVoice((v) => ({ n: v.n + 1, afterQuestions }));
+  const draftRef = useRef<DraftView | null>(null);
+  draftRef.current = draft;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const topRef = useRef<HTMLDivElement>(null);
   const hasConsent = Boolean(session?.consent);
 
@@ -165,7 +174,8 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     try {
       const res = await autofillApi.answer(draft.id, key, text, via === 'voice' ? 'voice' : 'chat');
       applyDraft(res.draft, res.fieldsHash);
-      onSession(await autofillApi.session());
+      // The profile summary elsewhere can catch up in the background — do not hold up the next question
+      autofillApi.session().then(onSession).catch(() => {});
       return res.result.ok ? res.result.error || null : res.result.error || 'I could not understand that — please try again.';
     } catch (err: any) {
       return err.message;
@@ -438,6 +448,26 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         {step === 2 && (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <div className="space-y-6">
+              <VoiceDocs
+                start={docVoice}
+                speechLocale={langConfig.speechLocale}
+                hindi={language === 'hi'}
+                getDraft={() => draftRef.current}
+                hasPhoto={() => Boolean(sessionRef.current?.photo?.usable)}
+                onSession={onSession}
+                refreshDraft={async () => {
+                  if (!draftRef.current) return null;
+                  const res = await autofillApi.getDraft(draftRef.current.id);
+                  applyDraft(res.draft, res.fieldsHash);
+                  draftRef.current = res.draft;
+                  return res.draft;
+                }}
+                onAnswerInstead={() => {
+                  setTypeInstead(true);
+                  setQuestionVoice((n) => n + 1);
+                }}
+                onAllDone={() => setStep(3)}
+              />
               <ConflictResolver t={t} conflicts={draft.conflicts} onSession={onSession} onResolved={refreshDraft} />
               {fromDocs.length > 0 && !typeInstead && (
                 <section className="card border-teal/30 bg-teal-50/40 p-5 sm:p-6" aria-labelledby="fromdocs-h">
@@ -458,6 +488,9 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                   </ul>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button onClick={() => setStep(1)} className="btn btn-primary btn-sm">Upload documents</button>
+                    <button onClick={() => startDocVoice(false)} className="btn btn-accent btn-sm">
+                      <AudioLines className="h-4 w-4" aria-hidden /> Scan by voice
+                    </button>
                     <button onClick={() => setTypeInstead(true)} className="btn btn-ghost btn-sm">I don’t have them — let me answer</button>
                   </div>
                 </section>
@@ -467,7 +500,16 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                 <h2 id="q-h" className="text-lg font-bold text-navy">{questions.length ? t.questionsTitle : t.questionsDone}</h2>
                 <p className="mt-1 text-sm text-muted">Only what your documents cannot tell us — about this application and your situation. Type, tap or speak your answer.</p>
                 <div className="mt-4">
-                  <MissingQuestions t={t} language={language} speechLocale={langConfig.speechLocale} questions={questions} onAnswer={answer} />
+                  <MissingQuestions
+                    t={t}
+                    language={language}
+                    speechLocale={langConfig.speechLocale}
+                    questions={questions}
+                    onAnswer={answer}
+                    voiceStart={questionVoice}
+                    onVoiceFinished={() => startDocVoice(true)}
+                    onScanRequest={() => startDocVoice(false)}
+                  />
                 </div>
               </section>
               )}

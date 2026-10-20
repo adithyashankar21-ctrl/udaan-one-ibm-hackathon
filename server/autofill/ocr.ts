@@ -205,8 +205,9 @@ Return the value to write on an English form: numbers as digits, dates as DD/MM/
         thinkingConfig: { thinkingBudget: 0 },
       },
     },
-    undefined,
-    { retryBusy: false, timeoutMs: 15000 }
+    // One fast model is enough to read a short answer
+    ['gemini-2.5-flash-lite', 'gemini-2.5-flash'],
+    { retryBusy: false, timeoutMs: 4000 }
   );
   const parsed = JSON.parse(response.text || '{}');
   return { understood: Boolean(parsed.understood), value: String(parsed.value || '').trim() };

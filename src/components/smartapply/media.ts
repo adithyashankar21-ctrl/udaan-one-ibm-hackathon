@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UploadFile } from '../../services/autofillApi';
+import { pickVoice } from '../learning/useSpeaker';
 
 const MAX_SIDE = 2200;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -117,3 +118,118 @@ export function useDictation(locale: string, onText: (text: string) => void) {
   useEffect(() => stop, [stop]);
   return { supported: Boolean(Ctor), listening, start, stop };
 }
+
+/**
+ * Turn-taking voice helper for filling forms hands-free: `say` speaks a prompt with the
+ * browser's own voice (instant, no network) and resolves when it has finished; `listen`
+ * hears one answer, showing words live as they are recognised. Both are cancelled by `cancel`.
+ */
+export function useVoiceTurns(locale: string) {
+  const Rec = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+  const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const [interim, setInterim] = useState('');
+  const [phase, setPhase] = useState<'idle' | 'speaking' | 'listening'>('idle');
+  const recRef = useRef<any>(null);
+  const run = useRef(0);
+
+  const cancel = useCallback(() => {
+    run.current++;
+    if (canSpeak) window.speechSynthesis.cancel();
+    try {
+      recRef.current?.abort();
+    } catch {}
+    recRef.current = null;
+    setInterim('');
+    setPhase('idle');
+  }, [canSpeak]);
+
+  const say = useCallback(
+    (text: string) =>
+      new Promise<boolean>((resolve) => {
+        const mine = ++run.current;
+        if (!canSpeak || !text) return resolve(true);
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        const voice = pickVoice(locale);
+        u.lang = voice?.lang || locale;
+        if (voice) u.voice = voice;
+        u.rate = 1.05;
+        const done = () => {
+          if (run.current === mine) setPhase('idle');
+          resolve(run.current === mine);
+        };
+        u.onend = done;
+        u.onerror = done;
+        setPhase('speaking');
+        window.speechSynthesis.speak(u);
+        // Some browsers never fire onend for long text; do not hang the conversation
+        setTimeout(done, 1500 + text.length * 90);
+      }),
+    [canSpeak, locale]
+  );
+
+  /** Resolves with what was said, '' if nothing was heard in time, or null if cancelled. */
+  const listen = useCallback(
+    (timeoutMs = 9000) =>
+      new Promise<string | null>((resolve) => {
+        const mine = ++run.current;
+        if (!Rec) return resolve(null);
+        const rec = new Rec();
+        rec.lang = locale;
+        rec.interimResults = true;
+        rec.continuous = false;
+        rec.maxAlternatives = 1;
+        let final = '';
+        let settled = false;
+        const finish = (value: string | null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          try {
+            rec.abort();
+          } catch {}
+          if (recRef.current === rec) recRef.current = null;
+          setInterim('');
+          if (run.current === mine) setPhase('idle');
+          resolve(run.current === mine ? value : null);
+        };
+        const timer = setTimeout(() => finish(final.trim()), timeoutMs);
+        rec.onresult = (e: any) => {
+          let live = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const r = e.results[i];
+            if (r.isFinal) final += r[0].transcript + ' ';
+            else live += r[0].transcript;
+          }
+          setInterim((final + live).trim());
+          // Answer as soon as the browser marks the phrase final — no extra waiting
+          if (final.trim() && !live) finish(final.trim());
+        };
+        rec.onerror = (e: any) => finish(e?.error === 'no-speech' ? '' : final.trim());
+        rec.onend = () => finish(final.trim());
+        recRef.current = rec;
+        setPhase('listening');
+        try {
+          rec.start();
+        } catch {
+          finish('');
+        }
+      }),
+    [Rec, locale]
+  );
+
+  useEffect(() => cancel, [cancel]);
+  return { supported: Boolean(Rec), canSpeak, say, listen, cancel, interim, phase };
+}
+
+/** Words that control a voice conversation, in English, Hinglish and Hindi. */
+// \b does not work next to Indian scripts, so word edges are spaces or punctuation
+const words = (list: string, anchored = false) => new RegExp(`${anchored ? '^' : '(?:^|[\\s,.!?।])'}(?:${list})(?=$|[\\s,.!?।])`, 'i');
+export const VOICE_COMMANDS = {
+  stop: words('stop|band karo|bas|ruko|रुको|बंद करो|बस', true),
+  skip: words('skip|next|chhodo|chodo|aage|बाद में|छोड़ो|छोड़ दो|अगला', true),
+  repeat: words('repeat|again|dobara|phir se|दोबारा|फिर से|what', true),
+  scan: words('scan|camera|upload|document|kagaz|kaagaz|स्कैन|कैमरा|दस्तावेज़|दस्तावेज'),
+  capture: words('capture|click|take|photo lo|khicho|kheencho|खींचो|कैप्चर|क्लिक'),
+  done: words('done|finish|ho gaya|hogaya|हो गया|पूरा'),
+};

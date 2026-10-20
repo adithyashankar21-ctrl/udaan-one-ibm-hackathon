@@ -84,6 +84,20 @@ function limiter(limit: number, windowMs: number) {
   };
 }
 
+/**
+ * One read-modify-write at a time per session. Sessions are files that each request loads and
+ * saves whole, so two overlapping requests (an answer and a background refresh) would
+ * otherwise lose one of the updates.
+ */
+const locks = new Map<string, Promise<unknown>>();
+function serial<T>(key: string, fn: () => Promise<T> | T): Promise<T> {
+  const run = (locks.get(key) || Promise.resolve()).then(fn, fn);
+  const tail = run.catch(() => {});
+  locks.set(key, tail);
+  tail.then(() => locks.get(key) === tail && locks.delete(key));
+  return run;
+}
+
 interface Ctx {
   session: SessionData | null;
   token: string | null;
@@ -148,6 +162,9 @@ function sessionPayload(session: SessionData | null) {
   };
 }
 
+/** Longest wait for Gemini to interpret a free-speech answer before using it as said. */
+const ANSWER_AI_MS = 5000;
+
 /** Normalise and store one answer for a draft field. */
 async function storeAnswer(
   generate: Generate,
@@ -162,7 +179,11 @@ async function storeAnswer(
   const needsAi = !n.ok || (spec.type === 'text' && hasNonLatin(text));
   if (needsAi && spec.type !== 'aadhaar') {
     try {
-      const ai = await interpretAnswer(generate, { label: spec.label, type: spec.type, options: spec.options }, text);
+      // Spoken answers must feel instant: give the AI a few seconds, then fall back
+      const ai = await Promise.race([
+        interpretAnswer(generate, { label: spec.label, type: spec.type, options: spec.options }, text),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('interpret timeout')), ANSWER_AI_MS)),
+      ]);
       if (ai.understood && ai.value) {
         const again = normalise(spec.type, ai.value, spec.options);
         if (again.ok) n = again;
@@ -205,25 +226,51 @@ export function createAutofillRouter(generate: Generate) {
     next();
   });
 
-  const withSession = (handler: (req: Request, res: Response, session: SessionData) => any) => async (req: Request, res: Response) => {
-    const { session } = ctx(req);
-    if (!session || !session.consent) return res.status(401).json({ error: 'consent_required' });
-    try {
-      await handler(req, res, session);
-    } catch (err) {
-      logError(req.path, err);
-      if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
-    }
-  };
+  /**
+   * Runs a handler with the caller's session, holding the session lock throughout. Slow
+   * handlers (document reading) pass `locked: false` and save through `update` instead, so
+   * answers are not held up while a document is being read.
+   */
+  const withSession =
+    (handler: (req: Request, res: Response, session: SessionData) => any, locked = true) =>
+    async (req: Request, res: Response) => {
+      const token = readCookie(req, COOKIE);
+      if (!token) return res.status(401).json({ error: 'consent_required' });
+      const run = async () => {
+        const session = loadSession(hashToken(token));
+        if (!session || !session.consent) return res.status(401).json({ error: 'consent_required' });
+        try {
+          await handler(req, res, session);
+        } catch (err) {
+          logError(req.path, err);
+          if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
+        }
+      };
+      return locked ? serial(hashToken(token), run) : run();
+    };
+
+  /** Apply a change to the latest saved copy of a session, under its lock, and save it. */
+  const update = <T>(session: SessionData, change: (fresh: SessionData) => T): Promise<T> =>
+    serial(session.hash, () => {
+      const fresh = loadSession(session.hash) || session;
+      const out = change(fresh);
+      saveSession(fresh);
+      return out;
+    });
 
   const findDraft = (session: SessionData, id: string) => session.drafts.find((d) => d.id === id);
 
   /* Session & consent */
 
-  router.get('/session', (req, res) => {
-    const { session } = ctx(req);
-    if (session) saveSession(session);
-    res.json(sessionPayload(session));
+  router.get('/session', async (req, res) => {
+    const token = readCookie(req, COOKIE);
+    if (!token) return res.json(sessionPayload(null));
+    await serial(hashToken(token), () => {
+      const session = loadSession(hashToken(token));
+      // Keep the session alive, but do not rewrite the file on every refresh
+      if (session && Date.now() - session.lastSeen > 60_000) saveSession(session);
+      res.json(sessionPayload(session));
+    });
   });
 
   router.post('/consent', (req, res) => {
@@ -328,31 +375,32 @@ export function createAutofillRouter(generate: Generate) {
         for (const f of files) f.buffer.fill(0);
       }
       const doc = { ...extracted, id: crypto.randomBytes(8).toString('hex'), uploadedAt: Date.now() };
-      // Someone else's document (e.g. a parent's passport) or one that failed a check must not
-      // overwrite the applicant's details; the person can still choose to use its values.
-      const before = checkDocument(doc, session.profile);
-      const holdBack = before.find((c) => (c.id === 'holder' && c.status !== 'pass') || (c.status === 'fail' && (c.id === 'number' || c.id === 'readable')));
-      for (const f of doc.fields) {
-        if (!f.value || !f.legible || f.confidence < 0.6) continue;
-        if (holdBack) {
-          f.note = f.note || (holdBack.id === 'holder' ? 'Not added to your application: this document has a different name.' : `Not added to your application: ${holdBack.label.toLowerCase()}.`);
-          continue;
+      await update(session, (fresh) => {
+        // Someone else's document (e.g. a parent's passport) or one that failed a check must not
+        // overwrite the applicant's details; the person can still choose to use its values.
+        const before = checkDocument(doc, fresh.profile);
+        const holdBack = before.find((c) => (c.id === 'holder' && c.status !== 'pass') || (c.status === 'fail' && (c.id === 'number' || c.id === 'readable')));
+        for (const f of doc.fields) {
+          if (!f.value || !f.legible || f.confidence < 0.6) continue;
+          if (holdBack) {
+            f.note = f.note || (holdBack.id === 'holder' ? 'Not added to your application: this document has a different name.' : `Not added to your application: ${holdBack.label.toLowerCase()}.`);
+            continue;
+          }
+          const r = mergeCandidate(fresh.profile, f.key, {
+            value: f.value,
+            source: 'document',
+            sourceLabel: doc.label,
+            status: 'extracted',
+            docId: doc.id,
+            confidence: f.confidence,
+            checksumOk: f.checksumOk,
+          });
+          f.merged = r.changed;
         }
-        const r = mergeCandidate(session.profile, f.key, {
-          value: f.value,
-          source: 'document',
-          sourceLabel: doc.label,
-          status: 'extracted',
-          docId: doc.id,
-          confidence: f.confidence,
-          checksumOk: f.checksumOk,
-        });
-        f.merged = r.changed;
-      }
-      session.documents.push(doc);
-      saveSession(session);
-      res.json({ document: documentView(session, doc), ...sessionPayload(session) });
-    })
+        fresh.documents.push(doc);
+        res.json({ document: documentView(fresh, doc), ...sessionPayload(fresh) });
+      });
+    }, false)
   );
 
   /* Applicant photo — one per session, printed on every application */
@@ -369,10 +417,11 @@ export function createAutofillRouter(generate: Generate) {
         if (err instanceof IngestError) return res.status(400).json({ error: err.message });
         throw err;
       }
-      session.photo = { ...photo, uploadedAt: Date.now() };
-      saveSession(session);
-      res.json(sessionPayload(session));
-    })
+      await update(session, (fresh) => {
+        fresh.photo = { ...photo, uploadedAt: Date.now() };
+        res.json(sessionPayload(fresh));
+      });
+    }, false)
   );
 
   router.get(
@@ -552,16 +601,19 @@ export function createAutofillRouter(generate: Generate) {
       const view = buildDraftView(session, draft);
       try {
         const analysed = await analyseOfficialForm(generate, file.buffer, file.mime, view.fields);
-        draft.officialForm = { name: file.name, mime: file.mime, bytesB64: file.buffer.toString('base64'), uploadedAt: Date.now(), ...analysed };
+        await update(session, (fresh) => {
+          const d = findDraft(fresh, draft.id);
+          if (!d) return res.status(404).json({ error: 'Draft not found' });
+          d.officialForm = { name: file.name, mime: file.mime, bytesB64: file.buffer.toString('base64'), uploadedAt: Date.now(), ...analysed };
+          d.generated = undefined;
+          d.updatedAt = Date.now();
+          res.json({ draft: buildDraftView(fresh, d) });
+        });
       } catch (err) {
         logError('official-form', err);
-        return res.status(502).json({ error: 'Could not read the layout of that form. You can still download the structured draft.' });
+        if (!res.headersSent) res.status(502).json({ error: 'Could not read the layout of that form. You can still download the structured draft.' });
       }
-      draft.generated = undefined;
-      draft.updatedAt = Date.now();
-      saveSession(session);
-      res.json({ draft: buildDraftView(session, draft) });
-    })
+    }, false)
   );
 
   router.delete(
@@ -684,6 +736,12 @@ export function createAutofillRouter(generate: Generate) {
   });
 
   router.post('/helpline/answer', async (req, res) => {
+    const t = helplineTokens.get(String(req.headers['x-helpline-token'] || ''));
+    if (!t) return res.status(401).json({ error: 'Helpline session expired.' });
+    return serial(t.sessionHash, () => helplineAnswer(req, res));
+  });
+
+  const helplineAnswer = async (req: Request, res: Response) => {
     const c = helplineCtx(req);
     if (!c) return res.status(401).json({ error: 'Helpline session expired.' });
     const spec = FORM_SCHEMA_MAP[c.draft.schemeId].fields.find((f) => f.key === req.body?.key);
@@ -698,7 +756,7 @@ export function createAutofillRouter(generate: Generate) {
       logError('helpline/answer', err);
       res.status(500).json({ error: 'Something went wrong.' });
     }
-  });
+  };
 
   return router;
 }

@@ -519,7 +519,7 @@ export default function App() {
                             try {
                               const res = await autofillApi.answer(chatDraft.id, key, text, via === 'voice' ? 'voice' : 'chat');
                               setChatDraft(res.draft);
-                              handleAutofillSession(await autofillApi.session());
+                              autofillApi.session().then(handleAutofillSession).catch(() => {});
                               return res.result.ok ? res.result.error || null : res.result.error || 'Not understood — please try again.';
                             } catch (err: any) {
                               return err.message;

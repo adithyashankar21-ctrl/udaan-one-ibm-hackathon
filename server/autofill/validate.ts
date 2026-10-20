@@ -50,6 +50,46 @@ const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
+/** Hindi month names as speech recognition writes them. */
+const HINDI_MONTHS: Array<[RegExp, string]> = [
+  [/जनवरी/, 'jan'], [/फ़?फरवरी|फ़रवरी/, 'feb'], [/मार्च/, 'mar'], [/अप्रैल/, 'apr'], [/मई/, 'may'], [/जून/, 'jun'],
+  [/जुलाई/, 'jul'], [/अगस्त/, 'aug'], [/सितंबर|सितम्बर/, 'sep'], [/अक्टूबर|अक्तूबर/, 'oct'], [/नवंबर|नवम्बर/, 'nov'], [/दिसंबर|दिसम्बर/, 'dec'],
+];
+
+const NUMBER_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100,
+  ek: 1, do: 2, teen: 3, char: 4, chaar: 4, paanch: 5, panch: 5, chhe: 6, che: 6, saat: 7, aath: 8, nau: 9, das: 10,
+  एक: 1, दो: 2, तीन: 3, चार: 4, पांच: 5, पाँच: 5, छह: 6, छः: 6, सात: 7, आठ: 8, नौ: 9, दस: 10, बीस: 20, सौ: 100,
+};
+
+/**
+ * Speech-friendly clean-up before parsing: Indian-script digits to 0-9, Hindi month names to
+ * English, and a lone number word ("five", "paanch", "पांच") to its digits.
+ */
+export function spokenToPlain(raw: string, numberWords = false): string {
+  let s = raw.replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 0x966)).replace(/[௦-௯]/g, (d) => String(d.charCodeAt(0) - 0xbe6));
+  s = s.replace(/[౦-౯]/g, (d) => String(d.charCodeAt(0) - 0xc66)).replace(/[೦-೯]/g, (d) => String(d.charCodeAt(0) - 0xce6)).replace(/[൦-൯]/g, (d) => String(d.charCodeAt(0) - 0xd66));
+  for (const [re, m] of HINDI_MONTHS) s = s.replace(re, m);
+  if (numberWords && !/\d/.test(s)) {
+    const words = s.toLowerCase().replace(/[.,!?।]/g, ' ').split(/[\s-]+/).filter(Boolean);
+    let total = 0;
+    let found = false;
+    for (const w of words) {
+      const n = NUMBER_WORDS[w];
+      if (n === undefined) continue;
+      found = true;
+      total = n === 100 ? Math.max(1, total) * 100 : total + n;
+    }
+    if (found) s = `${s} ${total}`;
+  }
+  return s;
+}
+
+const YES = /^(yes|yeah|yep|yup|ya|haan|han|ha|haa|hanji|ji haan|ji|sahi|bilkul|correct|हाँ|हां|हा|जी|जी हाँ|ठीक|बिल्कुल|ஆம்|ஆமா|అవును|ಹೌದು|അതെ)(\b|\s|,|$)/i;
+const NO = /^(no|nope|nah|nahi|nahin|nai|na|nil|none|never|bilkul nahi|नहीं|नही|ना|जी नहीं|இல்லை|లేదు|ಇಲ್ಲ|ഇല്ല)(\b|\s|,|$)/i;
+
 /** Parse many date spellings into DD/MM/YYYY, or null. */
 export function normaliseDate(raw: string): string | null {
   const s = raw.trim().toLowerCase();
@@ -112,7 +152,7 @@ export interface Normalised {
  * valid value — the caller may then ask Gemini to interpret free speech.
  */
 export function normalise(type: FieldType, raw: string, options?: string[]): Normalised {
-  const text = String(raw ?? '').trim();
+  const text = spokenToPlain(String(raw ?? '').trim(), type === 'number' || type === 'money').trim();
   if (!text) return { ok: false, error: 'Empty answer' };
   const compact = text.replace(/[\s-]/g, '');
 
@@ -163,17 +203,22 @@ export function normalise(type: FieldType, raw: string, options?: string[]): Nor
       return v ? { ok: true, value: v } : { ok: false, error: 'Please give an amount in rupees' };
     }
     case 'number': {
+      if (isNone(text)) return { ok: true, value: '0' };
       const m = text.match(/\d+/);
       return m ? { ok: true, value: m[0] } : { ok: false, error: 'Please give a number' };
     }
     case 'select': {
       const opts = options || [];
       const lower = text.toLowerCase();
-      const yes = /^(yes|haan|han|हाँ|हां|ஆம்|అవును|ಹೌದು|അതെ)/i.test(text);
-      const no = isNone(text);
+      // A negation anywhere wins: "ji nahi", "haan... nahi hai" mean no
+      const no = isNone(text) || NO.test(text) || /\b(nahi|nahin|nai|not)\b|नहीं|नही/i.test(text);
+      const yes = !no && YES.test(text);
+      // Words of 4+ letters that identify an option ("tailor" → "Tailor (Darzi)")
+      const words = (o: string) => o.toLowerCase().split(/[^a-z\u0900-\u0d7f]+/).filter((w) => w.length >= 4);
       const hit =
         opts.find((o) => o.toLowerCase() === lower) ||
         opts.find((o) => lower.includes(o.toLowerCase().split(/[\s(/]/)[0])) ||
+        opts.find((o) => words(o).some((w) => lower.includes(w))) ||
         (yes ? opts.find((o) => /^yes$/i.test(o)) : undefined) ||
         (no ? opts.find((o) => /^no$/i.test(o)) : undefined);
       return hit ? { ok: true, value: hit } : { ok: false, error: `Choose one of: ${opts.join(', ')}` };

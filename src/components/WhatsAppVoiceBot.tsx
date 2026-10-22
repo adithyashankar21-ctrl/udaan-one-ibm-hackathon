@@ -20,6 +20,9 @@ import {
 import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis } from '../types';
 import { SUPPORTED_LANGUAGES } from '../data/languages';
 import { aiService, offlineReply } from '../services/aiService';
+import { APPLY_INTENT_EVENT, type ApplyIntentDetail, type SessionState } from '../services/autofillApi';
+import { useApplicationDesk } from './smartapply/useApplicationDesk';
+import { isApplicationRequest } from './smartapply/useIvrApplication';
 
 interface WhatsAppVoiceBotProps {
   currentLanguage: LanguageCode;
@@ -28,6 +31,9 @@ interface WhatsAppVoiceBotProps {
   onGenerateRoadmap: () => void;
   roadmap: LivelihoodAnalysis | null;
   onOpenKaushalPatra: () => void;
+  onSession?: (s: SessionState) => void;
+  /** An unfinished application to offer to continue in the chat. */
+  openDraft?: { id: string; name: string } | null;
 }
 
 // Localized initial greetings for each language
@@ -102,6 +108,8 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
   onGenerateRoadmap,
   roadmap,
   onOpenKaushalPatra,
+  onSession,
+  openDraft,
 }) => {
   const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === currentLanguage) || SUPPORTED_LANGUAGES[0];
   const langKey = currentLanguage in INITIAL_GREETINGS ? currentLanguage : 'en';
@@ -138,6 +146,49 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
   const [micError, setMicError] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
+
+  const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const botSays = (text: string) =>
+    setMessages((prev) => [...prev, { id: `bot-${Date.now()}-${prev.length}`, sender: 'bot', isAudioNote: true, audioDuration: '0:10', text, time: now() }]);
+
+  // Applications are filled right here in the chat: questions, documents and photo sent as attachments
+  const desk = useApplicationDesk({
+    language: currentLanguage,
+    channel: 'chat',
+    say: async (text) => botSays(text),
+    setBusy: setIsBotTyping,
+    onSession,
+  });
+  const deskRef = useRef(desk);
+  deskRef.current = desk;
+  const fileRef = useRef<HTMLInputElement>(null);
+  /** Set when the assistant heard "I want to apply"; the application starts after its reply. */
+  const pendingApply = useRef<string | null>(null);
+
+  useEffect(() => {
+    const onIntent = (e: Event) => {
+      const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
+      if (detail.channel === 'chat' && detail.schemeId && !deskRef.current.active) pendingApply.current = detail.schemeId;
+    };
+    window.addEventListener(APPLY_INTENT_EVENT, onIntent);
+    return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
+  }, []);
+
+  const offeredDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openDraft || desk.active || offeredDraft.current === openDraft.id) return;
+    offeredDraft.current = openDraft.id;
+    botSays(`📝 Your ${openDraft.name} application is not finished yet. Reply "continue my application" and I will finish it with you here.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDraft?.id]);
+
+  const sendAttachments = async (files: File[]) => {
+    if (!files.length) return;
+    setMessages((prev) => [...prev, { id: `usr-${Date.now()}`, sender: 'user', text: files.map((f) => `📎 ${f.name}`).join('\n'), time: now() }]);
+    if (!(await desk.handleFiles(files))) {
+      botSays('To use a document, first tell me what you want to apply for — for example "I want to apply for a PAN card". I will ask for the documents when they are needed.');
+    }
+  };
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -270,6 +321,14 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
     };
 
     setMessages((prev) => [...prev, newMsg]);
+
+    // An application open in the chat takes the answer; "continue my application" reopens one
+    if (await desk.handleText(text)) return;
+    if (!desk.active && openDraft && isApplicationRequest(text)) {
+      await desk.resume(openDraft.id);
+      return;
+    }
+
     setIsBotTyping(true);
 
     try {
@@ -298,6 +357,10 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
+      // "I want to apply for…": start filling it right here
+      const schemeId = pendingApply.current;
+      pendingApply.current = null;
+      if (schemeId) await desk.startNew(schemeId);
     } catch (e: any) {
       setIsBotTyping(false);
       console.warn('WhatsApp chat fallback:', e?.message);
@@ -559,7 +622,28 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
       {/* Bottom WhatsApp Input Bar */}
       <div className="bg-[#202c33] px-3 py-2.5 flex items-center gap-2">
         <Smile className="w-5 h-5 text-slate-400 hover:text-white cursor-pointer" />
-        <Paperclip className="w-5 h-5 text-slate-400 hover:text-white cursor-pointer" />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className={`${desk.wants ? 'text-emerald-400 animate-pulse' : 'text-slate-400'} hover:text-white`}
+          aria-label={desk.wants?.kind === 'photo' ? 'Send your photo' : desk.wants ? `Send your ${desk.wants.doc}` : 'Send a document'}
+          title={desk.wants?.kind === 'photo' ? 'Send your photo' : desk.wants ? `Send your ${desk.wants.doc}` : 'Send a document'}
+        >
+          <Paperclip className="w-5 h-5" />
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          capture={desk.wants?.kind === 'photo' ? 'user' : undefined}
+          multiple={desk.wants?.kind !== 'photo'}
+          className="hidden"
+          onChange={(e) => {
+            const list = Array.from(e.target.files || []);
+            e.target.value = '';
+            sendAttachments(list);
+          }}
+        />
 
         {isRecording ? (
           <div className="flex-1 flex items-center justify-between bg-rose-950/40 border border-rose-500/40 rounded-xl px-3 py-2 text-xs text-rose-300">

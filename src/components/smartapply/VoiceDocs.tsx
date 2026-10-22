@@ -3,7 +3,7 @@ import { AudioLines } from 'lucide-react';
 import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind } from '../../data/autofillSchema';
 import { autofillApi, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { CameraScanner } from './CameraScanner';
-import { VOICE_COMMANDS, preparePassportPhoto, spokenIndex, useVoiceTurns } from './media';
+import { VOICE_COMMANDS, findField, preparePassportPhoto, spokenIndex, useVoiceTurns } from './media';
 import { spokenIn } from '../../services/translate';
 import type { LanguageCode } from '../../types';
 
@@ -91,27 +91,6 @@ const PH = {
     downloaded: (where: string) => `आपका आवेदन डाउनलोड हो गया। अभी कहीं जमा नहीं हुआ है। इसे अपने मूल दस्तावेज़ों के साथ ${where} पर ले जाइए।`,
   },
 };
-
-/** The field whose name was spoken, comparing with its English, Hindi and translated names. */
-function findField(heard: string, fields: DraftView['fields'], spokenLabels: string[]) {
-  const said = heard.toLowerCase().replace(/[.,!?।۔]/g, ' ').trim();
-  const names = (f: DraftView['fields'][number], i: number) =>
-    [f.label, (f as any).labelHi, spokenLabels.length === fields.length ? spokenLabels[i] : undefined]
-      .filter(Boolean)
-      .map((n: string) => n.toLowerCase().replace(/\s*\(.*?\)/g, '').trim());
-  const scored = fields.map((f, i) => {
-    let best = 0;
-    for (const n of names(f, i)) {
-      if (said.includes(n) || n.includes(said)) best = Math.max(best, 100 + n.length);
-      const words = n.split(/[\s/'’-]+/).filter((w) => w.length >= 3);
-      const hits = words.filter((w) => said.includes(w)).length;
-      if (hits) best = Math.max(best, (hits / words.length) * 50 + hits);
-    }
-    return { f, best };
-  });
-  const top = scored.sort((a, b) => b.best - a.best)[0];
-  return top && top.best >= 25 ? top.f : null;
-}
 
 const kindOf = (label: string) => (Object.keys(DOC_KINDS) as DocKind[]).find((k) => DOC_KINDS[k].label === label);
 const shortName = (label: string) => label.split(/\s*[/(]/)[0].trim();

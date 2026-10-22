@@ -154,8 +154,8 @@ app.post('/api/ai/chat', async (req, res) => {
           ? 'ask which scheme or document they want to apply for.'
           : /helpline|ivr|phone/i.test(String(channel))
             ? 'say you will now take their application details in this call, one question at a time.'
-            : /voice/i.test(String(channel))
-              ? "say Smart Apply is opening now and will ask the application questions by voice, then help with documents and the photo."
+            : /voice|whatsapp|chat/i.test(String(channel))
+              ? 'say you will fill the application with them right here in this conversation, one question at a time, and they can send photos of their documents here too.'
               : 'tell them UDAAN ONE\'s Smart Apply can fill the application from their documents and answers, and that a "Continue to Smart Apply" button is now on the screen.'
       } Do not ask the application questions yourself. Never say an application has been submitted.`
     : '';

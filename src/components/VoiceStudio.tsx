@@ -22,6 +22,9 @@ import { useVoiceAssistant } from '../hooks/useVoiceAssistant';
 import { aiService, lastChatMeta } from '../services/aiService';
 import { SchemeResultCard, schemesMentioned } from './assistant/SchemeResultCard';
 import { Dialog, Stepper } from './ui/kit';
+import { APPLY_INTENT_EVENT, type ApplyIntentDetail, type SessionState } from '../services/autofillApi';
+import { useApplicationDesk, type DeskWants } from './smartapply/useApplicationDesk';
+import { CameraScanner } from './smartapply/CameraScanner';
 
 interface VoiceStudioProps {
   currentLanguage: LanguageCode;
@@ -34,6 +37,10 @@ interface VoiceStudioProps {
   roadmap: LivelihoodAnalysis | null;
   onApply?: (schemeId: string) => void;
   onOpenSmartApply?: () => void;
+  onSession?: (s: SessionState) => void;
+  /** An application to start here as soon as the studio opens (handed over from the home orb). */
+  deskEntry?: { schemeId: string } | null;
+  onDeskEntryUsed?: () => void;
 }
 
 // Every language is a one-tap chip (the row scrolls sideways on small screens)
@@ -65,6 +72,9 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
   roadmap,
   onApply,
   onOpenSmartApply,
+  onSession,
+  deskEntry,
+  onDeskEntryUsed,
 }) => {
   const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === currentLanguage) || SUPPORTED_LANGUAGES[0];
   const t = getShellStrings(currentLanguage);
@@ -80,8 +90,61 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
     if (Object.keys(useful).length > 0) onUpdateProfile(useful);
   };
 
-  const voice = useVoiceAssistant(langConfig, userProfile, 'AI Voice Studio', { onUserText: learnFromUser });
-  const busy = voice.state === 'processing';
+  // While an application is open, what the person says goes to the application desk first
+  const deskRef = useRef<ReturnType<typeof useApplicationDesk> | null>(null);
+  const voice = useVoiceAssistant(langConfig, userProfile, 'AI Voice Studio', {
+    onUserText: (text) => {
+      if (!deskRef.current?.active) learnFromUser(text);
+    },
+    intercept: async (text) => Boolean(await deskRef.current?.handleText(text)),
+  });
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [scanner, setScanner] = useState<Exclude<DeskWants, null> | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const desk = useApplicationDesk({
+    language: currentLanguage,
+    channel: 'voice',
+    say: voice.announce,
+    setBusy: setDeskBusy,
+    onSession,
+    onScanRequest: (w) => {
+      voice.stop();
+      setScanner(w);
+    },
+  });
+  deskRef.current = desk;
+  const busy = voice.state === 'processing' || deskBusy;
+
+  /** Fill an application right here in the conversation. */
+  const applyHere = (schemeId: string) => {
+    voice.listenHandsFree();
+    desk.startNew(schemeId);
+  };
+
+  // "I want to apply for…" said to the assistant: take the application in this conversation
+  useEffect(() => {
+    const onIntent = (e: Event) => {
+      const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
+      if (detail.channel !== 'voice' || !detail.schemeId || deskRef.current?.active) return;
+      // Let the assistant finish its sentence first
+      aiService.whenSilent().then(() => deskRef.current?.startNew(detail.schemeId!));
+    };
+    window.addEventListener(APPLY_INTENT_EVENT, onIntent);
+    return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
+  }, []);
+
+  useEffect(() => {
+    if (!deskEntry) return;
+    onDeskEntryUsed?.();
+    applyHere(deskEntry.schemeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deskEntry?.schemeId]);
+
+  const sendFiles = async (files: File[] | Parameters<typeof desk.handleFiles>[0]) => {
+    if (!files.length) return;
+    voice.listenHandsFree();
+    await desk.handleFiles(files);
+  };
 
   // Mark replies that came from the offline fallback so they can be retried
   useEffect(() => {
@@ -122,7 +185,7 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
   const journey = [
     { label: 'Discover', done: voice.messages.length > 0 },
     { label: 'Understand', done: mentioned.some((x) => x.length > 0) },
-    { label: 'Apply', done: false },
+    { label: 'Apply', done: Boolean(desk.draft?.approved || desk.draft?.generated) },
   ];
   const journeyStep = journey.findIndex((s) => !s.done);
 
@@ -213,7 +276,7 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
                         )}
                       </div>
                       {mentioned[i]?.map((s) => (
-                        <SchemeResultCard key={s.id} scheme={s} profile={userProfile} onApply={onApply} />
+                        <SchemeResultCard key={s.id} scheme={s} profile={userProfile} onApply={onApply ? applyHere : undefined} />
                       ))}
                     </div>
                   </li>
@@ -244,6 +307,31 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
               ))}
             </div>
 
+            {/* The application being filled in this conversation */}
+            {desk.active && desk.draft && (
+              <div className="mb-3 rounded-2xl border border-teal/30 bg-teal-50/60 px-4 py-3 animate-fade-up" role="status">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className="block truncate font-bold text-navy">{desk.draft.scheme.name}</span>
+                    <span className="text-xs text-muted">
+                      Ref <span translate="no">{desk.draft.reference}</span> · {desk.draft.completion}% filled
+                    </span>
+                  </span>
+                  {desk.wants && (
+                    <>
+                      <button onClick={() => (voice.stop(), setScanner(desk.wants))} className="btn btn-success btn-sm">
+                        {desk.wants.kind === 'photo' ? 'Take photo' : `Scan ${desk.wants.doc}`}
+                      </button>
+                      <button onClick={() => fileRef.current?.click()} className="btn btn-outline btn-sm">
+                        <Paperclip className="h-4 w-4" aria-hidden /> Send file
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => desk.pause()} className="btn btn-ghost btn-sm">Pause</button>
+                </div>
+              </div>
+            )}
+
             {/* Voice state bar */}
             {voice.state !== 'idle' && (
               <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl bg-navy px-4 py-2.5 text-white animate-fade-up" role="status">
@@ -267,9 +355,27 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
             {voice.error && <p className="mb-2 text-sm text-coral-600" role="alert">{voice.error}</p>}
 
             <form onSubmit={submitTyped} className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2 focus-within:border-teal-600 focus-within:shadow-[0_0_0_3px_rgb(32_184_167/0.18)]">
-              <button type="button" onClick={onOpenSmartApply} className="btn btn-ghost h-11 w-11 shrink-0 p-0" aria-label="Upload documents for an application" title="Upload documents (Smart Apply)">
+              <button
+                type="button"
+                onClick={() => (desk.wants ? fileRef.current?.click() : onOpenSmartApply?.())}
+                className="btn btn-ghost h-11 w-11 shrink-0 p-0"
+                aria-label={desk.wants ? 'Send a photo or PDF for your application' : 'Upload documents for an application'}
+                title={desk.wants ? 'Send a photo or PDF' : 'Upload documents (Smart Apply)'}
+              >
                 <Paperclip className="h-5 w-5" aria-hidden />
               </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple={desk.wants?.kind === 'document'}
+                className="hidden"
+                onChange={(e) => {
+                  const list = Array.from(e.target.files || []);
+                  e.target.value = '';
+                  sendFiles(list);
+                }}
+              />
               <label htmlFor="studio-ask" className="sr-only">Type your question</label>
               <textarea
                 id="studio-ask"
@@ -308,6 +414,29 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
           </div>
         </div>
       </section>
+
+      {scanner && (
+        <CameraScanner
+          facing={scanner.kind === 'photo' ? 'user' : 'environment'}
+          maxPages={scanner.kind === 'photo' ? 1 : undefined}
+          title={scanner.kind === 'photo' ? 'Your photo' : `Scan your ${scanner.doc}`}
+          voicePrompt={
+            scanner.kind === 'photo'
+              ? 'Look straight at the camera, in front of a plain wall. Say capture.'
+              : `Hold your ${scanner.doc} flat inside the frame, in good light. Say capture. For the back side, say capture again. Then say done.`
+          }
+          speechLocale={langConfig.speechLocale}
+          language={currentLanguage}
+          onClose={() => {
+            setScanner(null);
+            voice.listenHandsFree();
+          }}
+          onDone={(files) => {
+            setScanner(null);
+            sendFiles(files);
+          }}
+        />
+      )}
 
       {/* ── Side rail ───────────────────────────────────── */}
       <aside className="space-y-6">

@@ -22,7 +22,12 @@ export function useVoiceAssistant(
   language: Language,
   profile: BeneficiaryProfile,
   channel: string,
-  options: { onUserText?: (text: string) => void; initialMessages?: VoiceMessage[] } = {}
+  options: {
+    onUserText?: (text: string) => void;
+    initialMessages?: VoiceMessage[];
+    /** Gets what the person said first (e.g. an application being filled); true when it was handled. */
+    intercept?: (text: string) => Promise<boolean>;
+  } = {}
 ) {
   const [state, setState] = useState<VoiceState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
@@ -36,6 +41,8 @@ export function useVoiceAssistant(
   const messagesRef = useRef<VoiceMessage[]>(options.initialMessages || []);
   const onUserTextRef = useRef(options.onUserText);
   onUserTextRef.current = options.onUserText;
+  const interceptRef = useRef(options.intercept);
+  interceptRef.current = options.intercept;
   const stateRef = useRef<VoiceState>('idle');
   const handsFreeRef = useRef(false);
   const askRef = useRef<(text: string) => Promise<void>>(async () => {});
@@ -146,6 +153,14 @@ export function useVoiceAssistant(
     setMessages(history);
     setVoiceState('processing');
     onUserTextRef.current?.(question);
+    if (await interceptRef.current?.(question)) {
+      // Whatever handled it has spoken through announce(); keep listening if hands-free
+      if (stateRef.current === 'processing') {
+        if (handsFreeRef.current) startRecognition();
+        else setVoiceState('idle');
+      }
+      return;
+    }
 
     const reply = await aiService.chatWithAssistant(history.slice(-8), profile, language.name, channel);
     const withReply = [...history, { role: 'assistant' as const, content: reply }];
@@ -159,6 +174,22 @@ export function useVoiceAssistant(
     else setVoiceState('idle');
   };
   askRef.current = ask;
+
+  /**
+   * A message from elsewhere in the conversation (the application desk): shown, spoken with the
+   * quick device or backup voice, then listening resumes in hands-free mode.
+   */
+  const announce = async (text: string) => {
+    stopRecognition();
+    const withMsg = [...messagesRef.current, { role: 'assistant' as const, content: text }];
+    messagesRef.current = withMsg;
+    setMessages(withMsg);
+    setVoiceState('speaking');
+    await aiService.speakQuick(text, language.speechLocale);
+    if (stateRef.current !== 'speaking') return;
+    if (handsFreeRef.current) startRecognition();
+    else setVoiceState('idle');
+  };
 
   /** Main mic button: start a hands-free conversation, or stop everything. */
   const toggleListening = () => {
@@ -234,5 +265,11 @@ export function useVoiceAssistant(
     resume,
     repeat,
     reset,
+    announce,
+    /** Listen hands-free (for example after the desk asks its first question). */
+    listenHandsFree: () => {
+      handsFreeRef.current = true;
+      if (stateRef.current === 'idle') startRecognition();
+    },
   };
 }

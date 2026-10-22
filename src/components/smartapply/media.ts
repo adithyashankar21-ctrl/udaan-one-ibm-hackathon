@@ -299,3 +299,24 @@ export function spokenIndex(text: string, count: number): number {
   for (let i = Math.min(count, ORDINALS.length) - 1; i >= 0; i--) if (new RegExp(ORDINALS[i], 'i').test(text)) return i;
   return -1;
 }
+
+/** The field whose name was spoken, comparing with its English, Hindi and translated names. */
+export function findField<F extends { label: string; labelHi?: string }>(heard: string, fields: F[], spokenLabels: string[]): F | null {
+  const said = heard.toLowerCase().replace(/[.,!?।۔]/g, ' ').trim();
+  const names = (f: F, i: number) =>
+    [f.label, f.labelHi, spokenLabels.length === fields.length ? spokenLabels[i] : undefined]
+      .filter((n): n is string => Boolean(n))
+      .map((n) => n.toLowerCase().replace(/\s*\(.*?\)/g, '').trim());
+  const scored = fields.map((f, i) => {
+    let best = 0;
+    for (const n of names(f, i)) {
+      if (said.includes(n) || n.includes(said)) best = Math.max(best, 100 + n.length);
+      const words = n.split(/[\s/'’-]+/).filter((w) => w.length >= 3);
+      const hits = words.filter((w) => said.includes(w)).length;
+      if (hits) best = Math.max(best, (hits / words.length) * 50 + hits);
+    }
+    return { f, best };
+  });
+  const top = scored.sort((a, b) => b.best - a.best)[0];
+  return top && top.best >= 25 ? top.f : null;
+}

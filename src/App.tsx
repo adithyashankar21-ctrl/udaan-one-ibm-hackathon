@@ -29,7 +29,6 @@ import { ProfileForm } from './components/ProfileForm';
 import { UnifiedJourney } from './components/UnifiedJourney';
 import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
-import { MissingQuestions } from './components/smartapply/MissingQuestions';
 import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
@@ -41,7 +40,6 @@ import {
   toAutofillUpdates,
   toBeneficiaryPartial,
   type ApplyIntentDetail,
-  type DraftView,
   type SessionState,
 } from './services/autofillApi';
 import { LEARN_INTENT_EVENT, type LearningEntry } from './services/learnApi';
@@ -112,6 +110,8 @@ function readSavedSchemes(): string[] {
 export default function App() {
   const [currentChannel, setCurrentChannel] = useState<ChannelMode>('home');
   const [currentLanguage, setCurrentLanguage] = useState<LanguageCode>('en');
+  /** An application for the voice assistant to take in its conversation (handed over from the home orb). */
+  const [deskEntry, setDeskEntry] = useState<{ schemeId: string } | null>(null);
   const [userProfile, setUserProfile] = useState<BeneficiaryProfile>(CLEAN_EMPTY_PROFILE);
   const [roadmap, setRoadmap] = useState<LivelihoodAnalysis | null>(null);
   const [isGeneratingRoadmap, setIsGeneratingRoadmap] = useState(false);
@@ -126,7 +126,6 @@ export default function App() {
   const [learnIntent, setLearnIntent] = useState<LearningEntry | null>(null);
   const [learningEntry, setLearningEntry] = useState<LearningEntry | null>(null);
   const [smartApplyEntry, setSmartApplyEntry] = useState<{ schemeId?: string | null; draftId?: string | null; channel?: string } | null>(null);
-  const [chatDraft, setChatDraft] = useState<DraftView | null>(null);
   const channelRef = useRef(currentChannel);
   channelRef.current = currentChannel;
 
@@ -175,12 +174,18 @@ export default function App() {
       const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
       // The helpline call takes the application itself, in the call
       if (detail.channel === 'helpline' && channelRef.current === 'ivr' && detail.schemeId) return;
-      // The voice agent goes straight on: Smart Apply opens and continues by voice
-      if (detail.channel === 'voice' && channelRef.current === 'voice_studio' && detail.schemeId) {
-        // Let the assistant finish saying that Smart Apply is opening
-        aiService.whenSilent().then(() => openSmartApply({ schemeId: detail.schemeId, channel: 'voice' }));
+      // The voice agent fills the application itself, in its own conversation
+      if (detail.channel === 'voice' && channelRef.current === 'voice_studio' && detail.schemeId) return;
+      // From the home orb: carry on in the full voice assistant, which takes the application
+      if (detail.channel === 'voice' && channelRef.current === 'home' && detail.schemeId) {
+        aiService.whenSilent().then(() => {
+          setDeskEntry({ schemeId: detail.schemeId! });
+          setCurrentChannel('voice_studio');
+        });
         return;
       }
+      // The WhatsApp bot takes the application in its chat
+      if (detail.channel === 'chat' && channelRef.current === 'whatsapp' && detail.schemeId) return;
       setApplyIntent(detail);
     };
     window.addEventListener(APPLY_INTENT_EVENT, onIntent);
@@ -235,13 +240,6 @@ export default function App() {
 
   // The newest unfinished draft, so chat channels can answer its questions in place
   const openDraftSummary = (autofillSession?.drafts || []).filter((d) => d.status.code === 'collecting').sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  useEffect(() => {
-    if (!openDraftSummary || currentChannel !== 'whatsapp') return;
-    autofillApi
-      .getDraft(openDraftSummary.id)
-      .then((r) => setChatDraft(r.draft))
-      .catch(() => setChatDraft(null));
-  }, [openDraftSummary?.id, openDraftSummary?.updatedAt, currentChannel]);
 
   const handleGenerateRoadmap = async () => {
     if (!userProfile.name) {
@@ -452,6 +450,9 @@ export default function App() {
             roadmap={roadmap}
             onApply={(schemeId) => openSmartApply({ schemeId, channel: 'voice' })}
             onOpenSmartApply={() => openSmartApply({})}
+            onSession={handleAutofillSession}
+            deskEntry={deskEntry}
+            onDeskEntryUsed={() => setDeskEntry(null)}
           />
         )}
 
@@ -504,44 +505,9 @@ export default function App() {
                     onGenerateRoadmap={handleGenerateRoadmap}
                     roadmap={roadmap}
                     onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
+                    onSession={handleAutofillSession}
+                    openDraft={openDraftSummary ? { id: openDraftSummary.id, name: openDraftSummary.schemeName } : null}
                   />
-                  {/* Cross-channel continuity: answer the open application's questions right here */}
-                  {chatDraft && chatDraft.missing.length > 0 && (
-                    <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5" aria-labelledby="chat-apply-h">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-teal">{sa.inProgress}</p>
-                          <h2 id="chat-apply-h" className="mt-1 text-lg font-extrabold text-white">{chatDraft.scheme.name}</h2>
-                          <p className="text-sm text-slate-300">
-                            {chatDraft.missing.length} {sa.questionsLeft} · {sa.answerHere}
-                          </p>
-                        </div>
-                        <button onClick={() => openSmartApply({ draftId: chatDraft.id })} className="btn btn-on-dark btn-sm">
-                          Open in Smart Apply <ArrowRight className="h-4 w-4" aria-hidden />
-                        </button>
-                      </div>
-                      <div className="mt-4">
-                        <MissingQuestions
-                          t={sa}
-                          language={currentLanguage}
-                          speechLocale={langConfig.speechLocale}
-                          questions={chatDraft.missing}
-                          dark
-                          compact
-                          onAnswer={async (key, text, via) => {
-                            try {
-                              const res = await autofillApi.answer(chatDraft.id, key, text, via === 'voice' ? 'voice' : 'chat');
-                              setChatDraft(res.draft);
-                              autofillApi.session().then(handleAutofillSession).catch(() => {});
-                              return res.result.ok ? res.result.error || null : res.result.error || 'Not understood — please try again.';
-                            } catch (err: any) {
-                              return err.message;
-                            }
-                          }}
-                        />
-                      </div>
-                    </section>
-                  )}
                 </>
               )}
 

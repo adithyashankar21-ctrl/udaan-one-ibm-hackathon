@@ -4,10 +4,11 @@
  * A request is signed in when it carries the Supabase access token; the token is checked with
  * Supabase and the result kept for a few minutes.
  */
-const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+// Read when used, not at import: server.ts loads .env after its imports are evaluated
+const supabaseUrl = () => (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const anonKey = () => process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-export const authEnabled = Boolean(SUPABASE_URL && ANON_KEY);
+export const authEnabled = () => Boolean(supabaseUrl() && anonKey());
 
 export interface AuthUser {
   id: string;
@@ -20,13 +21,13 @@ const cache = new Map<string, { user: AuthUser | null; until: number }>();
 
 /** The signed-in user for an access token, or null if it is missing, expired or not genuine. */
 export async function verifyUser(accessToken: string | undefined | null): Promise<AuthUser | null> {
-  if (!authEnabled || !accessToken) return null;
+  if (!authEnabled() || !accessToken) return null;
   const hit = cache.get(accessToken);
   if (hit && hit.until > Date.now()) return hit.user;
   let user: AuthUser | null = null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: ANON_KEY, Authorization: `Bearer ${accessToken}` },
+    const res = await fetch(`${supabaseUrl()}/auth/v1/user`, {
+      headers: { apikey: anonKey(), Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {

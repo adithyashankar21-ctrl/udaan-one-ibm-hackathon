@@ -245,7 +245,7 @@ export function createAutofillRouter(generate: Generate) {
 
   // With sign-in switched on, every account has its own session, whatever browser it is used from
   router.use(async (req, res, next) => {
-    if (!authEnabled || PUBLIC_ROUTE.test(req.path)) return next();
+    if (!authEnabled() || PUBLIC_ROUTE.test(req.path)) return next();
     const user = await verifyUser(bearerToken(req.headers.authorization));
     if (!user) return res.status(401).json({ error: 'login_required' });
     (req as any).userId = user.id;

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AudioLines } from 'lucide-react';
-import { DOC_KINDS, type DocKind } from '../../data/autofillSchema';
+import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind } from '../../data/autofillSchema';
 import { autofillApi, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { CameraScanner } from './CameraScanner';
-import { VOICE_COMMANDS, preparePassportPhoto, useVoiceTurns } from './media';
+import { VOICE_COMMANDS, preparePassportPhoto, spokenIndex, useVoiceTurns } from './media';
 import { spokenIn } from '../../services/translate';
 import type { LanguageCode } from '../../types';
 
@@ -34,19 +34,28 @@ const PH = {
     reading: (doc: string) => `Reading your ${doc}.`,
     filled: (n: number, doc: string) => (n ? `Done. ${n} details filled from your ${doc}.` : `I could not read any details from it. You can scan it again or answer yourself.`),
     failed: 'The document could not be read.',
-    photo: 'Last, your photo for the form. Say photo to open the front camera, or say stop.',
+    photo: 'Last, your photo for the form. Say photo to open the front camera, or say skip to add it later.',
     pose: 'Look straight at the camera, in front of a plain wall. Say capture.',
     photoOk: 'Your photo is added.',
     photoBad: (why: string) => `The photo cannot be used: ${why}. Say photo to try again.`,
     proof: (label: string, example: string) => `Your application also needs ${label.toLowerCase()}, for example your ${example}. Say scan to show it to the camera, or say skip.`,
-    left: (n: number, labels: string) => `${n} ${n === 1 ? 'detail is' : 'details are'} still missing: ${labels}. You can answer on the screen.`,
+    left: (n: number, labels: string) => `${n} ${n === 1 ? 'detail is' : 'details are'} still missing: ${labels}. Say answer to give ${n === 1 ? 'it' : 'them'} now, or say stop to fill ${n === 1 ? 'it' : 'them'} on the screen later.`,
+    conflict: (label: string, values: string[]) =>
+      `Your documents show two different values for ${label.toLowerCase()}: ${values.map((v, i) => `${i + 1}: ${v}`).join(', ')}. Say the number of the right one, or say the correct ${label.toLowerCase()}.`,
+    whichField: 'Which detail do you want to change? Say its name, for example mobile number.',
+    noField: 'I could not find that detail. Please say its name as it is shown on the screen, or say stop.',
+    newValue: (label: string) => `Say the new ${label.toLowerCase()}.`,
+    changed: (label: string) => `${label} is changed.`,
     allDone: 'Everything is filled. Opening the review so you can check your details.',
     notHeard: 'Voice paused. Tap Fill by voice to continue.',
     conflicts: (n: number) => `${n} ${n === 1 ? 'detail has' : 'details have'} two different values from your documents. Please choose the right one on the screen, then say continue.`,
     review: (n: number, check: string[]) =>
-      `All ${n} details are filled.${check.length ? ` Please check these on the screen: ${check.join(', ')}.` : ''} Say read to hear every detail, say approve if they are all correct, or say stop to check them yourself.`,
-    afterRead: 'Say approve if everything is correct, or stop to change something on the screen.',
-    notReady: 'The application is not ready to approve yet. Please check the screen.',
+      `All ${n} details are filled.${check.length ? ` Please check these on the screen: ${check.join(', ')}.` : ''} Say read to hear every detail, say change to correct one, say approve if they are all correct, or say stop.`,
+    afterRead: 'Say approve if everything is correct, or say change to correct a detail.',
+    notReady: (needs: string[]) =>
+      needs.length
+        ? `Before it can be approved, the application still needs: ${needs.join(', ')}. Tap Fill by voice when you have ${needs.length === 1 ? 'it' : 'them'} ready.`
+        : 'The application is not ready to approve yet. Please check the screen.',
     approved: 'Approved. Say download to save your filled application as a PDF.',
     downloaded: (where: string) => `Your application is downloaded. Nothing has been submitted. Take it, with your original documents, to ${where}.`,
   },
@@ -56,23 +65,53 @@ const PH = {
     reading: (doc: string) => `${doc} पढ़ा जा रहा है।`,
     filled: (n: number, doc: string) => (n ? `हो गया। ${doc} से ${n} जानकारी भरी गई।` : 'इससे कोई जानकारी नहीं पढ़ी जा सकी। फिर से स्कैन करें या ख़ुद बताइए।'),
     failed: 'दस्तावेज़ नहीं पढ़ा जा सका।',
-    photo: 'आख़िर में, फ़ॉर्म के लिए आपकी फ़ोटो। सामने का कैमरा खोलने के लिए फ़ोटो बोलिए।',
+    photo: 'आख़िर में, फ़ॉर्म के लिए आपकी फ़ोटो। सामने का कैमरा खोलने के लिए फ़ोटो बोलिए, या बाद में जोड़ने के लिए छोड़ो बोलिए।',
     pose: 'कैमरे की तरफ़ सीधे देखिए, पीछे सादी दीवार हो। कैप्चर बोलिए।',
     photoOk: 'आपकी फ़ोटो जुड़ गई।',
     photoBad: (why: string) => `यह फ़ोटो नहीं चलेगी: ${why}। दोबारा कोशिश के लिए फ़ोटो बोलिए।`,
     proof: (label: string, example: string) => `आवेदन के लिए ${label} भी चाहिए, जैसे आपका ${example}। कैमरे में दिखाने के लिए स्कैन बोलिए, या छोड़ो बोलिए।`,
-    left: (n: number, labels: string) => `${n} जानकारी अभी बाकी है: ${labels}। आप स्क्रीन पर जवाब दे सकते हैं।`,
+    left: (n: number, labels: string) => `${n} जानकारी अभी बाकी है: ${labels}। अभी बताने के लिए जवाब बोलिए, या बाद में स्क्रीन पर भरने के लिए रुको बोलिए।`,
+    conflict: (label: string, values: string[]) =>
+      `${label} के दो अलग मान मिले हैं: ${values.map((v, i) => `${i + 1}: ${v}`).join(', ')}। सही वाले का नंबर बोलिए, या सही ${label} बोलिए।`,
+    whichField: 'कौन-सी जानकारी बदलनी है? उसका नाम बोलिए, जैसे मोबाइल नंबर।',
+    noField: 'वह जानकारी नहीं मिली। स्क्रीन पर लिखा नाम बोलिए, या रुको बोलिए।',
+    newValue: (label: string) => `नया ${label} बोलिए।`,
+    changed: (label: string) => `${label} बदल दिया गया।`,
     allDone: 'सब भर गया। अब जाँच के लिए रिव्यू खोला जा रहा है।',
     notHeard: 'आवाज़ रोकी गई। जारी रखने के लिए Fill by voice दबाइए।',
     conflicts: (n: number) => `${n} जानकारी के दस्तावेज़ों में दो अलग मान हैं। स्क्रीन पर सही वाला चुनिए, फिर आगे बोलिए।`,
     review: (n: number, check: string[]) =>
-      `सारी ${n} जानकारी भर गई है।${check.length ? ` स्क्रीन पर इन्हें जाँच लीजिए: ${check.join(', ')}।` : ''} हर जानकारी सुनने के लिए पढ़ो बोलिए, सब सही हो तो मंज़ूर बोलिए, या ख़ुद जाँचने के लिए रुको बोलिए।`,
-    afterRead: 'सब सही हो तो मंज़ूर बोलिए, या कुछ बदलना हो तो रुको बोलिए।',
-    notReady: 'आवेदन अभी मंज़ूरी के लिए तैयार नहीं है। कृपया स्क्रीन देखिए।',
+      `सारी ${n} जानकारी भर गई है।${check.length ? ` स्क्रीन पर इन्हें जाँच लीजिए: ${check.join(', ')}।` : ''} हर जानकारी सुनने के लिए पढ़ो बोलिए, कुछ ठीक करना हो तो बदलो बोलिए, सब सही हो तो मंज़ूर बोलिए, या रुको बोलिए।`,
+    afterRead: 'सब सही हो तो मंज़ूर बोलिए, या कुछ ठीक करना हो तो बदलो बोलिए।',
+    notReady: (needs: string[]) =>
+      needs.length
+        ? `मंज़ूरी से पहले आवेदन में अभी यह चाहिए: ${needs.join(', ')}। तैयार होने पर Fill by voice दबाइए।`
+        : 'आवेदन अभी मंज़ूरी के लिए तैयार नहीं है। कृपया स्क्रीन देखिए।',
     approved: 'मंज़ूर हो गया। भरा हुआ आवेदन PDF में सेव करने के लिए डाउनलोड बोलिए।',
     downloaded: (where: string) => `आपका आवेदन डाउनलोड हो गया। अभी कहीं जमा नहीं हुआ है। इसे अपने मूल दस्तावेज़ों के साथ ${where} पर ले जाइए।`,
   },
 };
+
+/** The field whose name was spoken, comparing with its English, Hindi and translated names. */
+function findField(heard: string, fields: DraftView['fields'], spokenLabels: string[]) {
+  const said = heard.toLowerCase().replace(/[.,!?।۔]/g, ' ').trim();
+  const names = (f: DraftView['fields'][number], i: number) =>
+    [f.label, (f as any).labelHi, spokenLabels.length === fields.length ? spokenLabels[i] : undefined]
+      .filter(Boolean)
+      .map((n: string) => n.toLowerCase().replace(/\s*\(.*?\)/g, '').trim());
+  const scored = fields.map((f, i) => {
+    let best = 0;
+    for (const n of names(f, i)) {
+      if (said.includes(n) || n.includes(said)) best = Math.max(best, 100 + n.length);
+      const words = n.split(/[\s/'’-]+/).filter((w) => w.length >= 3);
+      const hits = words.filter((w) => said.includes(w)).length;
+      if (hits) best = Math.max(best, (hits / words.length) * 50 + hits);
+    }
+    return { f, best };
+  });
+  const top = scored.sort((a, b) => b.best - a.best)[0];
+  return top && top.best >= 25 ? top.f : null;
+}
 
 const kindOf = (label: string) => (Object.keys(DOC_KINDS) as DocKind[]).find((k) => DOC_KINDS[k].label === label);
 const shortName = (label: string) => label.split(/\s*[/(]/)[0].trim();
@@ -84,6 +123,7 @@ const shortName = (label: string) => label.split(/\s*[/(]/)[0].trim();
 export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getDraft, hasPhoto, onSession, refreshDraft, onAnswerInstead, onShowStep, onApprove, onDownload }) => {
   const voice = useVoiceTurns(speechLocale);
   const p = language === 'hi' ? PH.hi : PH.en;
+  const labelOf = (f: { label: string; labelHi?: string }) => (language === 'hi' && f.labelHi ? f.labelHi : f.label);
   const say = async (text: string) => voice.say(await spokenIn(language, text));
   const [scanner, setScanner] = useState<null | { kind?: DocKind; doc: string; photo?: boolean }>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -91,6 +131,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
   const afterQuestions = useRef(false);
   /** Requirements the person said to skip in this voice session. */
   const skippedProofs = useRef(new Set<string>());
+  const skippedPhoto = useRef(false);
 
   useEffect(() => () => {
     alive.current = false;
@@ -144,28 +185,50 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
       return end(VOICE_COMMANDS.stop.test(heard) ? undefined : p.notHeard);
     }
 
-    if (!hasPhoto()) {
+    if (!hasPhoto() && !skippedPhoto.current) {
       setStatus('Asking for your photo');
       const heard = await ask(p.photo);
       if (heard === null) return;
       if (VOICE_COMMANDS.photo.test(heard) || VOICE_COMMANDS.scan.test(heard) || VOICE_COMMANDS.capture.test(heard)) return setScanner({ doc: 'photo', photo: true });
+      if (VOICE_COMMANDS.skip.test(heard)) {
+        // Carry on to the review; approval will say the photo is still needed
+        skippedPhoto.current = true;
+        return next(draft);
+      }
       return end(VOICE_COMMANDS.stop.test(heard) ? undefined : p.notHeard);
     }
 
     if (draft.missing.length) {
-      return end(p.left(draft.missing.length, draft.missing.slice(0, 3).map((f) => f.label.toLowerCase()).join(', ')));
+      setStatus('Asking for the details still missing');
+      const heard = await ask(p.left(draft.missing.length, draft.missing.slice(0, 3).map((f) => labelOf(f).toLowerCase()).join(', ')));
+      if (heard === null) return;
+      if (heard && !VOICE_COMMANDS.stop.test(heard) && (VOICE_COMMANDS.answer.test(heard) || VOICE_COMMANDS.yes.test(heard))) {
+        setStatus(null);
+        return onAnswerInstead();
+      }
+      return end(heard ? undefined : p.notHeard);
     }
-    if (draft.conflicts.length) {
-      setStatus('Waiting for you to choose the right values');
-      const heard = await ask(p.conflicts(draft.conflicts.length));
-      if (heard && !VOICE_COMMANDS.stop.test(heard)) return next((await refreshDraft()) || draft);
-      return end();
+    // Documents disagree: read both values and take the choice by voice
+    for (const c of draft.conflicts) {
+      const label = labelOf({ label: PROFILE_FIELD_MAP[c.key]?.label || c.key, labelHi: PROFILE_FIELD_MAP[c.key]?.labelHi });
+      setStatus(`Choosing your ${label.toLowerCase()}`);
+      const heard = await ask(p.conflict(label, c.candidates.map((x) => x.value)));
+      if (heard === null) return;
+      if (!heard || VOICE_COMMANDS.stop.test(heard)) return end(heard ? undefined : p.notHeard);
+      const index = spokenIndex(heard, c.candidates.length);
+      try {
+        onSession(await autofillApi.resolveConflict(c.id, index >= 0 ? { index } : { value: heard }));
+      } catch (err: any) {
+        return end(err?.message || p.failed);
+      }
     }
+    if (draft.conflicts.length) return next((await refreshDraft()) || draft);
     await review(draft);
   };
 
   /** Review, approval and download — all by voice, with the details on screen. */
-  const review = async (draft: DraftView) => {
+  const review = async (first: DraftView) => {
+    let draft = first;
     onShowStep(3);
     setStatus('Reviewing your application');
     let prompt = p.review(draft.fields.filter((f) => f.value).length, draft.needsReview.map((f) => f.label.toLowerCase()));
@@ -173,6 +236,13 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
       const heard = await ask(prompt);
       if (heard === null) return;
       if (!heard || VOICE_COMMANDS.stop.test(heard)) return end(heard ? undefined : p.notHeard);
+      if (VOICE_COMMANDS.change.test(heard)) {
+        const fresh = await correctByVoice();
+        if (fresh === null) return;
+        draft = fresh;
+        prompt = p.afterRead;
+        continue;
+      }
       if (VOICE_COMMANDS.read.test(heard)) {
         // Labels in the chosen language; the values themselves are read as written
         const filled = draft.fields.filter((f) => f.value);
@@ -183,7 +253,11 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
         continue;
       }
       if ((VOICE_COMMANDS.approve.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) {
-        if (!(await onApprove())) return end(p.notReady);
+        if (!(await onApprove())) {
+          const d = (await refreshDraft()) || draft;
+          const needs = [...d.documents.filter((x) => x.required && !x.have && !x.manual).map((x) => x.label.toLowerCase()), ...d.missing.map((f) => labelOf(f).toLowerCase())];
+          return end(p.notReady(needs));
+        }
         onShowStep(4);
         const again = await ask(p.approved);
         if (again && (VOICE_COMMANDS.download.test(again) || VOICE_COMMANDS.yes.test(again))) {
@@ -202,6 +276,47 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
     end();
   };
 
+  /**
+   * Correct one detail by voice: name it, then say the new value. Resolves to the updated
+   * application, or null when voice was stopped.
+   */
+  const correctByVoice = async (): Promise<DraftView | null> => {
+    const draft = getDraft();
+    if (!draft) return null;
+    const fields = draft.fields;
+    // Names as the person may say them: English, Hindi, and in the chosen language
+    const spokenLabels = (await spokenIn(language, fields.map((f) => f.label).join(' | '))).split(/\s*\|\s*/);
+    for (let tries = 0; tries < 3 && alive.current; tries++) {
+      const heard = await ask(tries ? p.noField : p.whichField);
+      if (heard === null) return null;
+      if (!heard || VOICE_COMMANDS.stop.test(heard)) return draft;
+      const field = findField(heard, fields, spokenLabels);
+      if (!field) continue;
+      const label = labelOf(field);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const value = await ask(p.newValue(label));
+        if (value === null) return null;
+        if (!value || VOICE_COMMANDS.stop.test(value)) return draft;
+        setStatus(`Saving your ${label.toLowerCase()}…`);
+        try {
+          const res = await autofillApi.editFields(draft.id, { [field.key]: value });
+          onSession(res);
+          const error = res.errors?.[field.key];
+          if (error) {
+            await say(error);
+            continue;
+          }
+          await say(p.changed(label));
+          return (await refreshDraft()) || res.draft;
+        } catch (err: any) {
+          await say(err?.message || p.failed);
+        }
+      }
+      return (await refreshDraft()) || draft;
+    }
+    return draft;
+  };
+
   /** Speak, then listen; asks twice. '' if nothing was heard, null if voice was stopped. */
   const ask = async (prompt: string): Promise<string | null> => {
     for (let tries = 0; tries < 2; tries++) {
@@ -217,6 +332,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
     if (!start.n) return;
     afterQuestions.current = start.afterQuestions;
     skippedProofs.current.clear();
+    skippedPhoto.current = false;
     next();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start.n]);

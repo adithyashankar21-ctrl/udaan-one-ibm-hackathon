@@ -115,6 +115,8 @@ export const MissingQuestions: React.FC<Props> = (props) => {
 
   useEffect(() => {
     if (voiceStart) {
+      // Starting again by voice offers the questions skipped earlier once more
+      setSkipped([]);
       prefixRef.current = turns.length > 1 ? '' : `${voiceIntro ? `${voiceIntro} ` : ''}${phrases.start} `;
       setHands(true);
       setVoiceTick((n) => n + 1);

@@ -83,7 +83,7 @@ export const PROFILE_FIELDS: ProfileFieldDef[] = [
   { key: 'district', label: 'District', labelHi: 'ज़िला', type: 'text', question: 'Which district do you live in?', questionHi: 'आप किस ज़िले में रहते हैं?' },
   { key: 'state', label: 'State', labelHi: 'राज्य', type: 'text', question: 'Which State do you live in?', questionHi: 'आप किस राज्य में रहते हैं?' },
   { key: 'pincode', label: 'PIN code', labelHi: 'पिन कोड', type: 'pincode', question: 'What is your 6-digit PIN code?', questionHi: 'आपका 6 अंकों का पिन कोड क्या है?' },
-  { key: 'aadhaar', label: 'Aadhaar number', labelHi: 'आधार नंबर', type: 'aadhaar', sensitive: true, question: 'Please upload your Aadhaar card, or type the last 4 digits of your Aadhaar.', questionHi: 'कृपया आधार कार्ड अपलोड करें, या आधार के आख़िरी 4 अंक लिखें।' },
+  { key: 'aadhaar', label: 'Aadhaar number', labelHi: 'आधार नंबर', type: 'aadhaar', sensitive: true, question: 'Please say or type the last 4 digits of your Aadhaar, or upload your Aadhaar card.', questionHi: 'कृपया आधार के आख़िरी 4 अंक बोलिए या लिखिए, या आधार कार्ड अपलोड कीजिए।' },
   { key: 'panNumber', label: 'PAN', labelHi: 'पैन', type: 'pan', question: 'What is your PAN (10 characters, like ABCDE1234F)?', questionHi: 'आपका पैन नंबर क्या है (जैसे ABCDE1234F)?' },
   { key: 'socialCategory', label: 'Social category', labelHi: 'सामाजिक वर्ग', type: 'select', options: ['SC', 'ST', 'OBC', 'General', 'EWS'], question: 'Which social category do you belong to (SC, ST, OBC, General)?', questionHi: 'आप किस वर्ग से हैं (SC, ST, OBC, सामान्य)?' },
   { key: 'subCaste', label: 'Caste / sub-caste', labelHi: 'जाति / उप-जाति', type: 'text', question: 'What caste is written on your caste certificate?', questionHi: 'आपके जाति प्रमाण पत्र पर कौन-सी जाति लिखी है?' },

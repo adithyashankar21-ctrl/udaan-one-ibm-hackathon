@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
+import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
 import type { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { DOCUMENT_CATEGORIES, DOCUMENT_SERVICES, type DocumentCategory, type DocumentService } from '../../data/documentServices';
 import { FORM_SCHEMA_MAP, requirementsFor, DOC_KINDS } from '../../data/autofillSchema';
@@ -33,7 +33,8 @@ interface Props {
   profile: BeneficiaryProfile;
   langConfig: Language;
   session: SessionState | null;
-  onApply: (id: string) => void;
+  /** Open Smart Apply for this service; `byVoice` fills it by voice from the start. */
+  onApply: (id: string, byVoice?: boolean) => void;
   onNavigate: (m: ChannelMode) => void;
 }
 
@@ -53,7 +54,7 @@ function quickMatch(s: DocumentService, q: string) {
     .some((w) => hay.includes(w));
 }
 
-const ServiceCard: React.FC<{ s: DocumentService; profile: BeneficiaryProfile; haveKinds: Set<string>; highlight: boolean; onApply: (id: string) => void }> = ({
+const ServiceCard: React.FC<{ s: DocumentService; profile: BeneficiaryProfile; haveKinds: Set<string>; highlight: boolean; onApply: (id: string, byVoice?: boolean) => void }> = ({
   s,
   profile,
   haveKinds,
@@ -127,6 +128,9 @@ const ServiceCard: React.FC<{ s: DocumentService; profile: BeneficiaryProfile; h
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
         <button onClick={() => onApply(s.id)} className="btn btn-accent btn-sm h-10">
           <ScanLine className="h-4 w-4" aria-hidden /> Prepare application
+        </button>
+        <button onClick={() => onApply(s.id, true)} className="btn btn-success btn-sm h-10">
+          <AudioLines className="h-4 w-4" aria-hidden /> By voice
         </button>
         <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="btn btn-ghost btn-sm h-10">
           {open ? 'Hide steps' : 'How to apply'} <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />

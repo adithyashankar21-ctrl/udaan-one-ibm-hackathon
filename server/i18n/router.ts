@@ -80,6 +80,7 @@ Rules:
 - Keep unchanged: the brand "UDAAN ONE", scheme and act names (PM Vishwakarma, PM-AJAY, PMEGP, MUDRA, PM SVANidhi, NSQF, PMKVY), document names that are proper nouns (Aadhaar, PAN), acronyms (OCR, PDF, PIN, AI, IFSC, OTP), numbers, phone numbers, URLs, emails and placeholders in curly braces like {days}.
 - Keep the same punctuation, emoji and leading/trailing symbols. Keep line breaks.
 - A text that is only a name, code or number stays as it is.
+- Translate whole words: never mix English letters into a word of the native script.
 Return exactly one translation per input, in the same order.`;
 
 export function createTranslateRouter(generate: Generate) {
@@ -111,6 +112,8 @@ export function createTranslateRouter(generate: Generate) {
 
   router.post('/translate', async (req, res) => {
     const lang = String(req.body?.lang || '');
+    // Words about to be spoken go ahead of interface text waiting in line
+    const urgent = req.body?.urgent === true;
     const raw = req.body?.texts;
     if (!LANGUAGES[lang]) return res.status(400).json({ error: 'Unsupported language' });
     if (!Array.isArray(raw) || raw.length > MAX_TEXTS) return res.status(400).json({ error: 'Send up to 300 texts' });
@@ -120,7 +123,7 @@ export function createTranslateRouter(generate: Generate) {
     const missing = [...new Set(texts.filter((t) => t.trim() && !(t in cache) && !inFlight.has(`${lang}|${t}`)))];
     for (let i = 0; i < missing.length; i += BATCH) {
       const batch = missing.slice(i, i + BATCH);
-      const job = oneAtATime(() => translateBatch(lang, batch)).catch((err) => console.warn(`Translation to ${lang} failed:`, String(err?.message || err).slice(0, 160)));
+      const job = (urgent ? translateBatch(lang, batch) : oneAtATime(() => translateBatch(lang, batch))).catch((err) => console.warn(`Translation to ${lang} failed:`, String(err?.message || err).slice(0, 160)));
       batch.forEach((t) => {
         const key = `${lang}|${t}`;
         inFlight.set(

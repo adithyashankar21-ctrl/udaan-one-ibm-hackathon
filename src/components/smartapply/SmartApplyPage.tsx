@@ -9,7 +9,8 @@ import { DocumentStep, type Preview } from './DocumentStep';
 import { MissingQuestions } from './MissingQuestions';
 import { OutputStep } from './OutputStep';
 import { ReviewStep } from './ReviewStep';
-import { useDictation } from './media';
+import { VOICE_COMMANDS, useDictation, useVoiceTurns } from './media';
+import { prefetchTranslations, spokenIn } from '../../services/translate';
 import { VoiceDocs } from './VoiceDocs';
 
 interface Props {
@@ -24,6 +25,30 @@ interface Props {
   onEntryConsumed?: () => void;
 }
 
+/** What the voice says while choosing a form and asking consent (other languages are translated). */
+const PV = {
+  en: {
+    which: 'Which form or scheme do you want to apply for? For example a driving licence, a PAN card, or a loan for your shop.',
+    found: (name: string) => `I found ${name}. Say yes to start it, or say the name of a different form.`,
+    notFound: 'I could not find a form for that. Please say it another way, for example PM Vishwakarma, Aadhaar or driving licence.',
+    consent: (points: string[]) => `Before I read your documents: ${points.join(' ')} Say I agree to continue, or say no.`,
+    noConsent: 'All right, nothing has been saved.',
+    stopped: 'Stopped. Tap Apply by voice to start again.',
+    starting: (name: string) => `Starting your application for ${name}.`,
+    continuing: (name: string) => `Continuing your application for ${name}.`,
+  },
+  hi: {
+    which: 'आप किस फ़ॉर्म या योजना के लिए आवेदन करना चाहते हैं? जैसे ड्राइविंग लाइसेंस, पैन कार्ड, या दुकान के लिए लोन।',
+    found: (name: string) => `${name} मिल गया। शुरू करने के लिए हाँ बोलिए, या किसी दूसरे फ़ॉर्म का नाम बोलिए।`,
+    notFound: 'इसके लिए कोई फ़ॉर्म नहीं मिला। कृपया दूसरे तरीके से बोलिए, जैसे पीएम विश्वकर्मा, आधार या ड्राइविंग लाइसेंस।',
+    consent: (points: string[]) => `आपके दस्तावेज़ पढ़ने से पहले: ${points.join(' ')} जारी रखने के लिए "मैं सहमत हूँ" बोलिए, या नहीं बोलिए।`,
+    noConsent: 'ठीक है, कुछ भी सेव नहीं हुआ।',
+    stopped: 'रोक दिया। फिर शुरू करने के लिए Apply by voice दबाइए।',
+    starting: (name: string) => `आवेदन शुरू हुआ: ${name}।`,
+    continuing: (name: string) => `आपका ${name} आवेदन आगे भरते हैं।`,
+  },
+};
+
 const ELIG = {
   likely: { tone: 'success' as const, label: 'May be eligible' },
   'needs-info': { tone: 'warning' as const, label: 'Need more details' },
@@ -32,6 +57,26 @@ const ELIG = {
 
 export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session, onSession, initialSchemeId, initialDraftId, entryChannel = 'web', onEntryConsumed }) => {
   const t = getSmartApplyStrings(language);
+  const pv = language === 'hi' ? PV.hi : PV.en;
+  // Voice for choosing a form and giving consent; the form itself is filled by MissingQuestions and VoiceDocs
+  const voice = useVoiceTurns(langConfig.speechLocale);
+  const voiceMode = useRef(entryChannel === 'voice');
+  const [choosingByVoice, setChoosingByVoice] = useState(false);
+  const sayV = async (text: string) => voice.say(await spokenIn(language, text));
+  /** Speak, then listen; asks twice. '' if nothing was heard, null if voice was stopped. */
+  const askV = async (text: string): Promise<string | null> => {
+    for (let tries = 0; tries < 2; tries++) {
+      if (!(await sayV(text))) return null;
+      const heard = await voice.listen(9000);
+      if (heard === null || heard) return heard;
+    }
+    return '';
+  };
+  useEffect(() => () => voice.cancel(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fixed voice phrases translated ahead, so the first prompts are not held up
+  useEffect(() => {
+    prefetchTranslations([PV.en.which, PV.en.notFound, PV.en.noConsent, PV.en.stopped, ...t.consentPoints], language);
+  }, [language]); // eslint-disable-line react-hooks/exhaustive-deps
   const [schemes, setSchemes] = useState<SchemeInfo[]>([]);
   const [draft, setDraft] = useState<DraftView | null>(null);
   const [fieldsHash, setFieldsHash] = useState('');
@@ -78,8 +123,10 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   }, [draft]);
 
   /** Coming from the voice agent: go straight on by voice — questions first, else documents. */
-  const startVoiceFilling = (d: DraftView) => {
-    setVoiceIntro(`${language === 'hi' ? 'आवेदन शुरू हुआ:' : 'Starting your application for'} ${d.scheme?.name?.split(' (')[0] || ''}.`);
+  const startVoiceFilling = (d: DraftView, continuing = false) => {
+    voiceMode.current = true;
+    const name = d.scheme?.name?.split(' (')[0] || '';
+    setVoiceIntro(continuing ? pv.continuing(name) : pv.starting(name));
     if (d.missing.some((f) => !f.fillableBy?.length)) {
       setStep(2);
       setQuestionVoice((n) => n + 1);
@@ -89,6 +136,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   const firstUsefulStep = (d: DraftView) => (d.documents.some((x) => x.required && !x.have && !x.manual) ? 1 : d.missing.length || d.conflicts.length ? 2 : 3);
 
   const start = async (schemeId: string, channel = entryChannel) => {
+    if (channel === 'voice') voiceMode.current = true;
     if (!hasConsent) {
       setConsentFor(schemeId);
       return;
@@ -110,11 +158,12 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     }
   };
 
-  const resume = async (id: string) => {
+  const resume = async (id: string, byVoice = false) => {
     try {
       const res = await autofillApi.getDraft(id);
       applyDraft(res.draft, res.fieldsHash);
       setStep(res.draft.generated || res.draft.approved ? 4 : firstUsefulStep(res.draft));
+      if (byVoice) startVoiceFilling(res.draft, true);
     } catch (err: any) {
       setError(err.message);
     }
@@ -141,17 +190,77 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
       setConsentFor(null);
       if (pending) {
         setStarting(pending);
-        const res = await autofillApi.startDraft(pending, entryChannel);
+        const channel = voiceMode.current ? 'voice' : entryChannel;
+        const res = await autofillApi.startDraft(pending, channel);
         onSession(res);
         const full = await autofillApi.getDraft(res.draft.id);
         applyDraft(full.draft, full.fieldsHash);
         setStep(firstUsefulStep(full.draft));
-        if (entryChannel === 'voice') startVoiceFilling(full.draft);
+        if (channel === 'voice') startVoiceFilling(full.draft);
         setStarting(null);
       }
     } catch (err: any) {
       setError(err.message);
       setStarting(null);
+    }
+  };
+
+  /** Consent read aloud and given by voice (for people filling the form by voice). */
+  const consentByVoice = async () => {
+    voiceMode.current = true;
+    const points = t.consentPoints.map((x) => x.replace('{days}', String(session?.retentionDays ?? '')));
+    const heard = await askV(pv.consent(points));
+    if (heard === null) return;
+    if ((VOICE_COMMANDS.agree.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) return giveConsent();
+    setConsentFor(null);
+    sayV(heard ? pv.noConsent : pv.stopped);
+  };
+
+  // Started by voice and consent is still needed: ask for it by voice too
+  useEffect(() => {
+    if (consentFor && voiceMode.current) consentByVoice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consentFor]);
+
+  /** Choose the form by voice: say what you want, confirm the match, and filling starts by voice. */
+  const chooseByVoice = async () => {
+    voice.cancel();
+    voiceMode.current = true;
+    setChoosingByVoice(true);
+    try {
+      let prompt = pv.which;
+      let heard: string | null = null;
+      for (let turn = 0; turn < 5; turn++) {
+        if (heard === null || !heard) heard = await askV(prompt);
+        if (heard === null) return;
+        if (!heard || VOICE_COMMANDS.stop.test(heard)) {
+          await sayV(pv.stopped);
+          return;
+        }
+        setQuery(heard);
+        const r = await autofillApi.intent(heard).catch(() => null);
+        if (!r?.scheme) {
+          prompt = pv.notFound;
+          heard = '';
+          continue;
+        }
+        setMatch({ scheme: r.scheme, reason: r.reason, related: r.relatedSchemes || [] });
+        const reply = await askV(pv.found(r.scheme.name.split(' (')[0]));
+        if (reply === null) return;
+        if ((VOICE_COMMANDS.yes.test(reply) || VOICE_COMMANDS.agree.test(reply)) && !VOICE_COMMANDS.no.test(reply)) {
+          setChoosingByVoice(false);
+          return start(r.scheme.schemeId, 'voice');
+        }
+        if (!reply || VOICE_COMMANDS.stop.test(reply)) {
+          await sayV(pv.stopped);
+          return;
+        }
+        // "No" asks again; anything else is the name of another form
+        prompt = pv.which;
+        heard = VOICE_COMMANDS.no.test(reply) && reply.split(/\s+/).length <= 2 ? '' : reply;
+      }
+    } finally {
+      setChoosingByVoice(false);
     }
   };
 
@@ -205,7 +314,14 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   }
 
   const consentDialog = (
-    <Dialog open={Boolean(consentFor)} onClose={() => setConsentFor(null)} title={t.consentTitle}>
+    <Dialog
+      open={Boolean(consentFor)}
+      onClose={() => {
+        voice.cancel();
+        setConsentFor(null);
+      }}
+      title={t.consentTitle}
+    >
       <ul className="space-y-3">
         {t.consentPoints.map((p) => (
           <li key={p} className="flex gap-3 text-sm leading-relaxed text-navy">
@@ -215,8 +331,29 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         ))}
       </ul>
       <div className="mt-6 flex flex-wrap gap-2">
-        <button onClick={giveConsent} className="btn btn-success btn-lg">{t.consentAgree}</button>
-        <button onClick={() => setConsentFor(null)} className="btn btn-ghost btn-lg">{t.consentDecline}</button>
+        <button
+          onClick={() => {
+            voice.cancel();
+            giveConsent();
+          }}
+          className="btn btn-success btn-lg"
+        >
+          {t.consentAgree}
+        </button>
+        {voice.supported && (
+          <button onClick={consentByVoice} className="btn btn-outline btn-lg">
+            <AudioLines className="h-5 w-5" aria-hidden /> {voice.phase === 'listening' ? t.listening : 'Answer by voice'}
+          </button>
+        )}
+        <button
+          onClick={() => {
+            voice.cancel();
+            setConsentFor(null);
+          }}
+          className="btn btn-ghost btn-lg"
+        >
+          {t.consentDecline}
+        </button>
       </div>
     </Dialog>
   );
@@ -266,6 +403,22 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
               </button>
             </div>
           </form>
+          {voice.supported && (
+            <div className="mt-4 flex max-w-3xl flex-wrap items-center gap-3">
+              <button
+                onClick={() => (choosingByVoice ? (voice.cancel(), setChoosingByVoice(false)) : chooseByVoice())}
+                className={`btn btn-lg h-14 ${choosingByVoice ? 'bg-coral text-white' : 'btn-success'}`}
+              >
+                <AudioLines className={`h-5 w-5 ${voice.phase === 'listening' ? 'animate-pulse' : ''}`} aria-hidden />
+                {choosingByVoice ? 'Stop voice' : 'Apply by voice — no typing'}
+              </button>
+              {choosingByVoice && (
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200" role="status">
+                  {voice.interim ? `“${voice.interim}”` : voice.phase === 'listening' ? t.listening : voice.phase === 'speaking' ? 'Speaking…' : 'Looking for your form…'}
+                </span>
+              )}
+            </div>
+          )}
           <button
             onClick={async () => setRecs((await autofillApi.recommend()).recommendations)}
             className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-teal hover:underline"
@@ -334,9 +487,16 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                       Updated {new Date(d.updatedAt).toLocaleDateString('en-IN')}
                     </span>
                   </span>
-                  <button onClick={() => resume(d.id)} className="btn btn-primary btn-sm">
-                    {t.resume} <ArrowRight className="h-4 w-4" aria-hidden />
-                  </button>
+                  <span className="flex gap-2">
+                    {voice.supported && (
+                      <button onClick={() => resume(d.id, true)} className="btn btn-outline btn-sm" aria-label={`Continue ${d.schemeName} by voice`}>
+                        <AudioLines className="h-4 w-4" aria-hidden /> By voice
+                      </button>
+                    )}
+                    <button onClick={() => resume(d.id)} className="btn btn-primary btn-sm">
+                      {t.resume} <ArrowRight className="h-4 w-4" aria-hidden />
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -421,6 +581,11 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
+            {voice.supported && (
+              <button onClick={() => startVoiceFilling(draft, true)} className="btn btn-success btn-sm">
+                <AudioLines className="h-4 w-4" aria-hidden /> Fill by voice
+              </button>
+            )}
             <StatusPill tone={draft.generated || draft.approved ? 'success' : draft.readyForApproval ? 'info' : 'warning'}>{draft.status.label}</StatusPill>
             {draft.eligibility && (
               <StatusPill tone={ELIG[draft.eligibility.level].tone} title={draft.eligibility.reasons.join(' · ')}>

@@ -14,6 +14,7 @@ import {
   Search,
   X,
   XCircle,
+  AudioLines,
 } from 'lucide-react';
 import { BeneficiaryProfile, Language } from '../../types';
 import { CatalogScheme, EligibilityLevel, SCHEME_CATALOG, SchemeFilter, estimateEligibility } from '../../data/schemeCatalog';
@@ -32,7 +33,8 @@ interface SchemesPageProps {
   heading?: string;
   intro?: string;
   /** Start a Smart Apply application for this scheme. */
-  onApply?: (schemeId: string) => void;
+  /** Open Smart Apply for this scheme; `byVoice` fills it by voice from the start. */
+  onApply?: (schemeId: string, byVoice?: boolean) => void;
   /** Shows the Schemes / Documents switch (top-level Explore page only). */
   onNavigate?: (mode: ChannelMode) => void;
 }
@@ -274,9 +276,14 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
 
                 <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
                   {onApply && FORM_SCHEMA_MAP[s.id] && (
-                    <button onClick={() => onApply(s.id)} className="btn btn-accent btn-sm h-10">
-                      <ScanLine className="h-4 w-4" aria-hidden /> Start application
-                    </button>
+                    <>
+                      <button onClick={() => onApply(s.id)} className="btn btn-accent btn-sm h-10">
+                        <ScanLine className="h-4 w-4" aria-hidden /> Start application
+                      </button>
+                      <button onClick={() => onApply(s.id, true)} className="btn btn-success btn-sm h-10">
+                        <AudioLines className="h-4 w-4" aria-hidden /> By voice
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => setExpanded(open ? null : s.id)}

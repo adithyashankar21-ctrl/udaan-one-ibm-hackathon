@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UploadFile } from '../../services/autofillApi';
 import { pickVoice } from '../learning/useSpeaker';
 import { aiService, speakWithBackupVoice } from '../../services/aiService';
+import { toAsciiDigits } from '../../data/languageTools';
 
 const MAX_SIDE = 2200;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -260,7 +261,8 @@ const VOCAB = {
   approve: 'approve|correct|sahi|theek|thik|manzoor|मंज़ूर|मंजूर|सही|ठीक|बरोबर|मान्य|ஒப்புதல்|சரி|ఆమోదం|సరి|సరే|ಅನುಮೋದನೆ|ಸರಿ|അംഗീകരിക്കൂ|ശരി|অনুমোদন|ঠিক আছে|ঠিক|મંજૂર|બરાબર|ਮਨਜ਼ੂਰ|ਠੀਕ|ଅନୁମୋଦନ|ଠିକ|منظور|صحیح|ٹھیک',
   download: 'download|save|डाउनलोड|सेव|डाउनलोड करा|டவுன்லோட்|பதிவிறக்கு|డౌన్‌లోడ్|ಡೌನ್‌ಲೋಡ್|ഡൗൺലോഡ്|ডাউনলোড|ડાઉનલોડ|ਡਾਊਨਲੋਡ|ଡାଉନଲୋଡ|ڈاؤن لوڈ',
   agree: 'agree|i agree|sahmat|सहमत|मान्य|ஒப்புக்கொள்கிறேன்|சம்மதம்|అంగీకరిస్తున్నాను|ಒಪ್ಪುತ್ತೇನೆ|സമ്മതം|রাজি|সম্মত|સંમત|ਸਹਿਮਤ|ରାଜି|ସହମତ|متفق|راضی',
-  yes: 'yes|yeah|yep|ok|okay|haan|han|ha|hanji|ji|हाँ|हां|हा|जी|होय|हो|ஆம்|ஆமா|சரி|అవును|ಹೌದು|അതെ|ഉവ്വ്|হ্যাঁ|হাঁ|হ্যা|હા|ਹਾਂ|ਹਾਂਜੀ|ହଁ|ହଁ|ہاں|جی',
+  yes: 'yes|yeah|yep|ok|okay|haan|han|ha|hanji|ji|हाँ|हां|हा|जी|होय|हो|ஆம்|ஆமா|ஆமாம்|சரி|అవును|ಹೌದು|അതെ|ഉവ്വ്|হ্যাঁ|হাঁ|হ্যা|હા|ਹਾਂ|ਹਾਂਜੀ|ହଁ|ହଁ|ہاں|جی',
+  change: 'change|correct it|edit|wrong|mistake|badlo|badal|galat|बदलो|बदलना|बदल|गलत|ग़लत|बदला|चूक|மாற்று|மாற்ற|தவறு|మార్చు|మార్చండి|తప్పు|ಬದಲಾಯಿಸು|ಬದಲಿಸಿ|ತಪ್ಪು|മാറ്റുക|മാറ്റണം|തെറ്റ്|বদলাও|বদলান|পরিবর্তন|ভুল|બદલો|ખોટું|ਬਦਲੋ|ਗਲਤ|ਗ਼ਲਤ|ବଦଳାଅ|ବଦଳାନ୍ତୁ|ଭୁଲ|بدلو|بدلیں|غلط',
   no: 'no|nope|nahi|nahin|not|नहीं|नही|ना|नाही|இல்லை|வேண்டாம்|లేదు|వద్దు|ಇಲ್ಲ|ಬೇಡ|ഇല്ല|വേണ്ട|না|নেই|ના|નહીં|ਨਹੀਂ|ନା|ନାହିଁ|نہیں|نا',
 };
 
@@ -279,4 +281,21 @@ export const VOICE_COMMANDS = {
   agree: words(VOCAB.agree),
   yes: words(VOCAB.yes),
   no: words(VOCAB.no),
+  change: words(VOCAB.change),
 };
+
+/** "One" / "first" / "दूसरा" … in every supported language, by position (1-based). */
+const ORDINALS: string[] = [
+  'one|first|ek|pehla|pahla|एक|पहला|पहिला|ஒன்று|ஒன்னு|முதல்|ఒకటి|మొదటి|ಒಂದು|ಮೊದಲ|ഒന്ന്|ആദ്യ|এক|প্রথম|એક|પહેલું|પહેલો|ਇੱਕ|ਪਹਿਲਾ|ଏକ|ପ୍ରଥମ|ایک|پہلا',
+  'two|second|do|doosra|dusra|दो|दूसरा|दोन|दुसरा|இரண்டு|ரெண்டு|இரண்டாவது|రెండు|రెండవ|ಎರಡು|ಎರಡನೇ|രണ്ട്|രണ്ടാം|দুই|দ্বিতীয়|બે|બીજું|બીજો|ਦੋ|ਦੂਜਾ|ଦୁଇ|ଦ୍ୱିତୀୟ|دو|دوسرا',
+  'three|third|teen|tisra|तीन|तीसरा|तिसरा|மூன்று|மூன்றாவது|మూడు|మూడవ|ಮೂರು|ಮೂರನೇ|മൂന്ന്|മൂന്നാം|তিন|তৃতীয়|ત્રણ|ત્રીજું|ਤਿੰਨ|ਤੀਜਾ|ତିନି|ତୃତୀୟ|تین|تیسرا',
+].map((w) => words(w).source);
+
+/** Which of `count` choices was spoken ("2", "two", "दूसरा"…), as a 0-based index, or -1. */
+export function spokenIndex(text: string, count: number): number {
+  const digit = toAsciiDigits(text).match(/(?:^|\D)([1-9])(?:\D|$)/);
+  if (digit && Number(digit[1]) <= count && toAsciiDigits(text).replace(/\D/g, '').length === 1) return Number(digit[1]) - 1;
+  // Highest first, so "the second one" is 2, not 1
+  for (let i = Math.min(count, ORDINALS.length) - 1; i >= 0; i--) if (new RegExp(ORDINALS[i], 'i').test(text)) return i;
+  return -1;
+}

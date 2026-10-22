@@ -88,6 +88,25 @@ function request(text: string, lang: string): Promise<string | null> {
   });
 }
 
+/** Translate now, ahead of interface text waiting in line (for words about to be spoken). */
+async function translateUrgently(texts: string[], lang: LanguageCode): Promise<string[]> {
+  const cache = cacheFor(lang);
+  const missing = [...new Set(texts.filter((t) => needsTranslation(t) && !cache.has(t)))];
+  if (missing.length) {
+    try {
+      const res = await fetch('/api/i18n/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang, texts: missing, urgent: true }),
+      });
+      const out: Array<string | null> = res.ok ? (await res.json()).translations || [] : [];
+      missing.forEach((t, i) => out[i] && cache.set(t, out[i] as string));
+      persist(lang);
+    } catch {}
+  }
+  return texts.map((t) => cache.get(t) ?? t);
+}
+
 /** Translations of `texts` (the English text itself where none could be made). */
 export async function translateTexts(texts: string[], lang: LanguageCode): Promise<string[]> {
   if (lang === 'en') return texts;
@@ -101,15 +120,15 @@ const isNative = (text: string) => /[\u0900-\u0DFF\u0600-\u06FF]/.test(text);
 /**
  * Text to speak in `lang`: each part that is plain English is translated (parts are cached
  * separately, so a fixed phrase is fetched once however it is combined); parts already in an
- * Indian script, like the hand-written Hindi phrases, are spoken as given. Never waits more than 6 s.
+ * Indian script, like the hand-written Hindi phrases, are spoken as given. Never waits more than 8 s.
  */
 export async function spokenIn(lang: LanguageCode, ...parts: Array<string | undefined | null | false>): Promise<string> {
   const list = parts.filter((p): p is string => Boolean(p && p.trim())).map((p) => p.trim());
   if (lang === 'en') return list.join(' ');
   const english = list.filter((p) => !isNative(p));
   const translated = await Promise.race([
-    translateTexts(english, lang),
-    new Promise<string[]>((resolve) => setTimeout(() => resolve(english.map((p) => cacheFor(lang).get(p) ?? p)), 6000)),
+    translateUrgently(english, lang),
+    new Promise<string[]>((resolve) => setTimeout(() => resolve(english.map((p) => cacheFor(lang).get(p) ?? p)), 8000)),
   ]);
   const byText = new Map(english.map((p, i) => [p, translated[i]]));
   return list.map((p) => byText.get(p) ?? p).join(' ');

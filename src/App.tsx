@@ -365,7 +365,7 @@ export default function App() {
             savedIds={savedSchemeIds}
             onToggleSave={toggleSavedScheme}
             onOpenProfile={() => setIsProfileModalOpen(true)}
-            onApply={(schemeId) => openSmartApply({ schemeId })}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
             onNavigate={setCurrentChannel}
           />
         )}
@@ -375,7 +375,7 @@ export default function App() {
             profile={userProfile}
             langConfig={langConfig}
             session={autofillSession}
-            onApply={(schemeId) => openSmartApply({ schemeId })}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
             onNavigate={setCurrentChannel}
           />
         )}
@@ -387,7 +387,7 @@ export default function App() {
             savedIds={savedSchemeIds}
             onToggleSave={toggleSavedScheme}
             onOpenProfile={() => setIsProfileModalOpen(true)}
-            onApply={(schemeId) => openSmartApply({ schemeId })}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
             onNavigate={setCurrentChannel}
             onLearn={(topic, context) => openLearning({ topic, context })}
           />
@@ -405,7 +405,7 @@ export default function App() {
             onNavigate={setCurrentChannel}
             onGenerateRoadmap={handleGenerateRoadmap}
             isGeneratingRoadmap={isGeneratingRoadmap}
-            onApply={(schemeId) => openSmartApply({ schemeId })}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
           />
         )}
 
@@ -423,7 +423,7 @@ export default function App() {
             isGeneratingRoadmap={isGeneratingRoadmap}
             session={autofillSession}
             onOpenDraft={(id) => openSmartApply({ draftId: id })}
-            onApply={(schemeId) => openSmartApply({ schemeId })}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
           />
         )}
 

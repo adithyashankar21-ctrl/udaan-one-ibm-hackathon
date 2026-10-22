@@ -102,6 +102,27 @@ export function deleteSession(data: SessionData) {
 
 /* ── Application references (for resuming through the helpline) ───────── */
 
+/* Signed-in accounts: which session holds each account's details (the session token, encrypted) */
+const userDir = path.join(dataDir, 'users');
+const userPath = (userId: string) => path.join(userDir, `${hashToken(`user:${userId}`)}.enc`);
+
+export function saveUserSession(userId: string, token: string) {
+  fs.mkdirSync(userDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(userPath(userId), encrypt(token), { mode: 0o600 });
+}
+
+export function loadUserSession(userId: string): string | null {
+  try {
+    return decrypt(fs.readFileSync(userPath(userId)));
+  } catch {
+    return null;
+  }
+}
+
+export function removeUserSession(userId: string) {
+  fs.rmSync(userPath(userId), { force: true });
+}
+
 const refPath = (reference: string) => path.join(refDir, `${hashToken(reference.toUpperCase())}.enc`);
 
 export function saveReference(reference: string, sessionHash: string, draftId: string) {

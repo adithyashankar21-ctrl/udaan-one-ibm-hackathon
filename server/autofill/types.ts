@@ -135,6 +135,8 @@ export interface SessionData {
   createdAt: number;
   lastSeen: number;
   consent?: { version: string; at: number };
+  /** The signed-in account these details belong to (when sign-in is switched on). */
+  userId?: string;
   profile: ProfileState;
   documents: DocumentRecord[];
   photo?: ApplicantPhoto;

@@ -7,6 +7,7 @@ import {
   FileText,
   Globe2,
   Home,
+  LogOut,
   LayoutGrid,
   Compass,
   MapPin,
@@ -23,6 +24,7 @@ import {
 import { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
+import { authEnabled, signOut } from '../../services/supabase';
 
 interface SiteHeaderProps {
   current: ChannelMode;
@@ -310,6 +312,12 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               </span>
               <span translate={profileName ? "no" : undefined} className="hidden max-w-[7rem] truncate 2xl:inline">{profileName || t.profile}</span>
             </button>
+
+            {authEnabled && (
+              <button onClick={signOut} className={iconBtn} aria-label="Sign out" title="Sign out">
+                <LogOut className="h-5 w-5" aria-hidden />
+              </button>
+            )}
 
             <button onClick={() => setMobileOpen((o) => !o)} className={`${iconBtn} lg:hidden`} aria-expanded={mobileOpen} aria-label="Menu">
               {mobileOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}

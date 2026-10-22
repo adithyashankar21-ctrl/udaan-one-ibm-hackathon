@@ -23,9 +23,13 @@ import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
 import { checkPhoto } from './photo';
 import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
 import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
+import { authEnabled, bearerToken, verifyUser } from '../auth';
 import {
   RETENTION_DAYS,
   deleteSession,
+  loadUserSession,
+  removeUserSession,
+  saveUserSession,
   hashPin,
   hashToken,
   loadSession,
@@ -55,6 +59,19 @@ function readCookie(req: Request, name: string): string | null {
   }
   return null;
 }
+
+/** Make the rest of this request use `token` as its session (or no session). */
+function useSessionToken(req: Request, token: string | null) {
+  const others = (req.headers.cookie || '')
+    .split(';')
+    .map((p) => p.trim())
+    .filter((p) => p && !p.startsWith(`${COOKIE}=`));
+  if (token) others.push(`${COOKIE}=${encodeURIComponent(token)}`);
+  req.headers.cookie = others.join('; ');
+}
+
+/** Routes that hold no personal details, open without signing in. The phone helpline uses its reference and PIN. */
+const PUBLIC_ROUTE = /^\/(schemes|intent)$|^\/helpline\//;
 
 function setCookie(req: Request, res: Response, token: string, maxAge = MAX_AGE_S) {
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
@@ -226,6 +243,30 @@ export function createAutofillRouter(generate: Generate) {
     next();
   });
 
+  // With sign-in switched on, every account has its own session, whatever browser it is used from
+  router.use(async (req, res, next) => {
+    if (!authEnabled || PUBLIC_ROUTE.test(req.path)) return next();
+    const user = await verifyUser(bearerToken(req.headers.authorization));
+    if (!user) return res.status(401).json({ error: 'login_required' });
+    (req as any).userId = user.id;
+    let token = loadUserSession(user.id);
+    if (!token || !loadSession(hashToken(token))) {
+      token = null;
+      // First sign-in: what was filled in this browser before signing in becomes the account's,
+      // unless it already belongs to another account (a shared phone or kiosk)
+      const cookieToken = readCookie(req, COOKIE);
+      const browserSession = cookieToken ? loadSession(hashToken(cookieToken)) : null;
+      if (browserSession && !browserSession.userId) {
+        browserSession.userId = user.id;
+        saveSession(browserSession);
+        saveUserSession(user.id, cookieToken!);
+        token = cookieToken;
+      }
+    }
+    useSessionToken(req, token);
+    next();
+  });
+
   /**
    * Runs a handler with the caller's session, holding the session lock throughout. Slow
    * handlers (document reading) pass `locked: false` and save through `update` instead, so
@@ -282,6 +323,11 @@ export function createAutofillRouter(generate: Generate) {
       token = created.token;
     }
     session.consent = { version: CONSENT_VERSION, at: Date.now() };
+    const userId = (req as any).userId as string | undefined;
+    if (userId) {
+      session.userId = userId;
+      saveUserSession(userId, token!);
+    }
     saveSession(session);
     setCookie(req, res, token!);
     res.json(sessionPayload(session));
@@ -290,6 +336,7 @@ export function createAutofillRouter(generate: Generate) {
   router.delete('/session', (req, res) => {
     const { session } = ctx(req);
     if (session) deleteSession(session);
+    if ((req as any).userId) removeUserSession((req as any).userId);
     setCookie(req, res, '', 0);
     res.json({ deleted: true });
   });

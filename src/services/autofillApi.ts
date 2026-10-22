@@ -3,6 +3,7 @@
  * (encrypted, short-lived); the browser only holds an HttpOnly session cookie.
  */
 import type { BeneficiaryProfile } from '../types';
+import { authHeader } from './supabase';
 import type { ProfileKey } from '../data/autofillSchema';
 
 const BASE = '/api/autofill';
@@ -18,7 +19,7 @@ async function call<T = any>(path: string, init: RequestInit & { json?: unknown 
   const res = await fetch(BASE + path, {
     credentials: 'same-origin',
     ...rest,
-    headers: { 'X-Udaan-Client': '1', ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(rest.headers || {}) },
+    headers: { 'X-Udaan-Client': '1', ...(await authHeader()), ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(rest.headers || {}) },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   if (!res.ok) {
@@ -237,7 +238,7 @@ export const autofillApi = {
   uploadPhoto: (file: UploadFile) => call<SessionState>('/photo', { method: 'POST', json: { files: [file] } }),
   deletePhoto: () => call<SessionState>('/photo', { method: 'DELETE', json: {} }),
   async photoBlob(): Promise<Blob | null> {
-    const res = await fetch(`${BASE}/photo`, { credentials: 'same-origin' });
+    const res = await fetch(`${BASE}/photo`, { credentials: 'same-origin', headers: await authHeader() });
     return res.ok ? res.blob() : null;
   },
 
@@ -257,7 +258,7 @@ export const autofillApi = {
     const res = await fetch(`${BASE}/drafts/${id}/pdf`, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'X-Udaan-Client': '1', 'Content-Type': 'application/json' },
+      headers: { 'X-Udaan-Client': '1', 'Content-Type': 'application/json', ...(await authHeader()) },
       body: JSON.stringify(opts),
     });
     if (!res.ok) {

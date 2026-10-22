@@ -31,6 +31,7 @@ import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
 import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
+import { saveLanguage, savedLanguage } from './components/AuthGate';
 import { ProfileSetup, profileComplete } from './components/ProfileSetup';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
@@ -110,7 +111,12 @@ function readSavedSchemes(): string[] {
 
 export default function App() {
   const [currentChannel, setCurrentChannel] = useState<ChannelMode>('home');
-  const [currentLanguage, setCurrentLanguage] = useState<LanguageCode>('en');
+  // The language chosen last time on this device (also on the sign-in screen)
+  const [currentLanguage, setLanguageState] = useState<LanguageCode>(savedLanguage);
+  const setCurrentLanguage = useCallback((code: LanguageCode) => {
+    setLanguageState(code);
+    saveLanguage(code);
+  }, []);
   /** An application for the voice assistant to take in its conversation (handed over from the home orb). */
   const [deskEntry, setDeskEntry] = useState<{ schemeId: string } | null>(null);
   /** Decided once when the app loads: shown to people without a profile, until they finish it. */

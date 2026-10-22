@@ -121,6 +121,19 @@ export function mixesScripts(translation: string, lang: LanguageCode, original =
   return Object.entries(SCRIPT_LETTERS).some(([script, re]) => script !== SCRIPT_OF[lang] && re.test(translation) && !re.test(original));
 }
 
+/**
+ * Numbers in a text are translated as placeholders, so "3 questions left" and "5 questions left"
+ * share one translation: maskNumbers gives the shared key and the numbers, unmaskNumbers puts
+ * the numbers back into the translation.
+ */
+export function maskNumbers(text: string): { key: string; numbers: string[] } {
+  const numbers: string[] = [];
+  const key = text.replace(/\d+(?:[.,:/]\d+)*/g, (m) => `{${numbers.push(m) - 1}}`);
+  return { key, numbers };
+}
+
+export const unmaskNumbers = (translation: string, numbers: string[]) => translation.replace(/\{(\d+)\}/g, (m, i) => numbers[Number(i)] ?? m);
+
 /** Said when the AI service cannot be reached. */
 export const OFFLINE_REPLIES: Record<LanguageCode, string> = {
   en: 'Sorry, I could not reach the AI service just now. Please try again in a moment. Meanwhile, you can browse schemes with official links under "Find Schemes", or call the toll-free helpline 1800-11-2529.',

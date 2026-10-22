@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { LanguageCode } from '../types';
-import { needsTranslation, peekTranslation, translateTexts } from '../services/translate';
+import { loadDictionary, needsTranslation, peekTranslation, translateTexts } from '../services/translate';
 
 /**
  * Shows the whole interface in the chosen language. Pages are written in English; this
@@ -9,7 +9,7 @@ import { needsTranslation, peekTranslation, translateTexts } from '../services/t
  * Indian script, code, and anything inside translate="no" is left alone.
  */
 
-const ATTRS = ['placeholder', 'title', 'aria-label'] as const;
+const ATTRS = ['placeholder', 'title', 'aria-label', 'alt'] as const;
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE', 'TEXTAREA', 'KBD', 'SAMP']);
 const SKIP_SELECTOR = '[translate="no"], .notranslate, [contenteditable="true"], .cm-editor';
 
@@ -82,7 +82,7 @@ export function AutoTranslate({ language }: { language: LanguageCode }) {
         }
       }
 
-      document.body.querySelectorAll('[placeholder], [title], [aria-label]').forEach((el) => {
+      document.body.querySelectorAll('[placeholder], [title], [aria-label], [alt]').forEach((el) => {
         if (skipped(el) && !el.matches('input, textarea')) return;
         if (el.closest(SKIP_SELECTOR)) return;
         for (const a of ATTRS) {
@@ -144,9 +144,18 @@ export function AutoTranslate({ language }: { language: LanguageCode }) {
     const observe = () =>
       observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...ATTRS] });
 
-    observe();
-    scan();
+    // The whole language's saved translations first, so the page appears already translated
+    const englishTitle = document.title;
+    loadDictionary(language).finally(() => {
+      if (!alive) return;
+      observe();
+      scan();
+      translateTexts([englishTitle], language).then(([t]) => {
+        if (alive) document.title = t;
+      });
+    });
     return () => {
+      document.title = englishTitle;
       alive = false;
       if (timer) clearTimeout(timer);
       observer.disconnect();

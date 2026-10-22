@@ -41,6 +41,8 @@ import { schemeEngine } from '../services/schemeEngine';
 import { documentIntelligence, getTemplatesForProfile, SampleDocumentTemplate } from '../services/documentIntelligence';
 import { kaushalFillEngine } from '../services/kaushalFillEngine';
 import { aiService } from '../services/aiService';
+import { alertIn } from '../services/translate';
+import type { LanguageCode } from '../types';
 
 interface UnifiedJourneyProps {
   currentLanguage: string;
@@ -164,7 +166,7 @@ export const UnifiedJourney: React.FC<UnifiedJourneyProps> = ({
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. Please type your request.');
+      alertIn(currentLanguage as LanguageCode, 'Speech recognition is not supported in this browser. Please type your request.');
       return;
     }
 
@@ -352,7 +354,7 @@ export const UnifiedJourney: React.FC<UnifiedJourneyProps> = ({
   const handleAddSampleDoc = (template: any) => {
     const existing = documents.find(d => d.docType === template.docType);
     if (existing) {
-      alert(`${template.docType} is already attached to this application.`);
+      alertIn(currentLanguage as LanguageCode, `${template.docType} is already attached to this application.`);
       return;
     }
 

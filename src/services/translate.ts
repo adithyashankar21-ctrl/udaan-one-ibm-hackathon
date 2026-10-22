@@ -1,4 +1,5 @@
 import type { LanguageCode } from '../types';
+import { maskNumbers, unmaskNumbers } from '../data/languageTools';
 
 /**
  * English → any supported language, through the server's cached Gemini translation.
@@ -51,8 +52,35 @@ function persist(lang: string) {
 /** True when a text has English words worth translating (not only numbers, codes or symbols). */
 export const needsTranslation = (text: string) => /[A-Za-z]{2,}/.test(text) && !/^(https?:\/\/|www\.)\S+$/i.test(text.trim()) && !/^\S+@\S+\.\S+$/.test(text.trim());
 
+/** The whole saved dictionary for each language (numbers as {0}…), loaded once. */
+const dictionaries = new Map<string, Record<string, string>>();
+const loading = new Map<string, Promise<void>>();
+
+/** Load every saved translation for `lang` in one request (resolves even if it fails). */
+export function loadDictionary(lang: LanguageCode): Promise<void> {
+  if (lang === 'en' || dictionaries.has(lang)) return Promise.resolve();
+  if (!loading.has(lang)) {
+    loading.set(
+      lang,
+      fetch(`/api/i18n/dictionary/${lang}`)
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((d) => void dictionaries.set(lang, d || {}))
+        .catch(() => void loading.delete(lang))
+    );
+  }
+  return loading.get(lang)!;
+}
+
 /** A translation already known, without waiting. */
-export const peekTranslation = (text: string, lang: LanguageCode): string | undefined => (lang === 'en' ? text : cacheFor(lang).get(text));
+export const peekTranslation = (text: string, lang: LanguageCode): string | undefined => {
+  if (lang === 'en') return text;
+  const hit = cacheFor(lang).get(text);
+  if (hit !== undefined) return hit;
+  const d = dictionaries.get(lang);
+  if (!d) return undefined;
+  const { key, numbers } = maskNumbers(text);
+  return d[key] !== undefined ? unmaskNumbers(d[key], numbers) : undefined;
+};
 
 async function flush(lang: string) {
   timers.delete(lang);
@@ -117,7 +145,7 @@ async function translateUrgently(texts: string[], lang: LanguageCode): Promise<s
 export async function translateTexts(texts: string[], lang: LanguageCode): Promise<string[]> {
   if (lang === 'en') return texts;
   const cache = cacheFor(lang);
-  return Promise.all(texts.map(async (t) => (!needsTranslation(t) ? t : cache.get(t) ?? (await request(t, lang)) ?? t)));
+  return Promise.all(texts.map(async (t) => (!needsTranslation(t) ? t : peekTranslation(t, lang) ?? cache.get(t) ?? (await request(t, lang)) ?? t)));
 }
 
 /** Written in an Indian script or Urdu already (so not to be translated again). */
@@ -144,3 +172,9 @@ export async function spokenIn(lang: LanguageCode, ...parts: Array<string | unde
 export const prefetchTranslations = (texts: string[], lang: LanguageCode) => {
   if (lang !== 'en') void translateTexts(texts.filter((t) => t && !isNative(t)), lang);
 };
+
+/** A browser pop-up message in the chosen language (pop-ups are outside the page, so not translated on screen). */
+export async function alertIn(lang: LanguageCode, text: string) {
+  const [t] = await translateTexts([text], lang);
+  window.alert(t);
+}

@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Type } from '@google/genai';
 import type { Generate } from '../autofill/ocr';
-import { mixesScripts } from '../../src/data/languageTools';
+import { maskNumbers, mixesScripts, unmaskNumbers } from '../../src/data/languageTools';
 import type { LanguageCode } from '../../src/types';
 
 const LANGUAGES: Record<string, string> = {
@@ -122,8 +122,7 @@ export function createTranslator(generate: Generate): Translate {
     }
   };
 
-  return async (lang, texts, urgent = false) => {
-    if (lang === 'en' || !LANGUAGES[lang]) return texts;
+  const translateKeys = async (lang: string, texts: string[], urgent: boolean) => {
     const cache = cacheFor(lang);
     const missing = [...new Set(texts.filter((t) => t.trim() && !(t in cache) && !inFlight.has(`${lang}|${t}`)))];
     for (let i = 0; i < missing.length; i += BATCH) {
@@ -141,10 +140,29 @@ export function createTranslator(generate: Generate): Translate {
     }
     return Promise.all(texts.map(async (t) => cache[t] ?? (await inFlight.get(`${lang}|${t}`)) ?? null));
   };
+
+  return async (lang, texts, urgent = false) => {
+    if (lang === 'en' || !LANGUAGES[lang]) return texts;
+    // Translate with numbers as placeholders, then put each text's own numbers back
+    const masked = texts.map(maskNumbers);
+    const out = await translateKeys(lang, masked.map((m) => m.key), urgent);
+    return out.map((t, i) => (t == null ? null : unmaskNumbers(t, masked[i].numbers)));
+  };
 }
+
+/** Every saved translation for a language (keys have numbers as {0}, {1}…). */
+export const dictionary = (lang: string) => (LANGUAGES[lang] ? cacheFor(lang) : null);
 
 export function createTranslateRouter(translate: Translate) {
   const router = express.Router();
+
+  // The whole language at once, so pages show translated straight away
+  router.get('/dictionary/:lang', (req, res) => {
+    const d = dictionary(req.params.lang);
+    if (!d) return res.status(404).json({ error: 'Unsupported language' });
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(d);
+  });
 
   router.post('/translate', async (req, res) => {
     const lang = String(req.body?.lang || '');

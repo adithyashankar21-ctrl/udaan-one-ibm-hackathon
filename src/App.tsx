@@ -31,6 +31,7 @@ import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
 import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
+import { ProfileSetup, profileComplete } from './components/ProfileSetup';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
 import { aiService } from './services/aiService';
@@ -112,6 +113,9 @@ export default function App() {
   const [currentLanguage, setCurrentLanguage] = useState<LanguageCode>('en');
   /** An application for the voice assistant to take in its conversation (handed over from the home orb). */
   const [deskEntry, setDeskEntry] = useState<{ schemeId: string } | null>(null);
+  /** Decided once when the app loads: shown to people without a profile, until they finish it. */
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const profileChecked = useRef(false);
   const [userProfile, setUserProfile] = useState<BeneficiaryProfile>(CLEAN_EMPTY_PROFILE);
   const [roadmap, setRoadmap] = useState<LivelihoodAnalysis | null>(null);
   const [isGeneratingRoadmap, setIsGeneratingRoadmap] = useState(false);
@@ -150,6 +154,10 @@ export default function App() {
   /** Keep the app's profile in step with the shared Smart Apply profile. */
   const handleAutofillSession = useCallback((s: SessionState) => {
     setAutofillSession(s);
+    if (!profileChecked.current) {
+      profileChecked.current = true;
+      if (!profileComplete(s)) setShowProfileSetup(true);
+    }
     if (s.consent && s.profile) {
       const partial = toBeneficiaryPartial(s.profile.fields);
       if (Object.keys(partial).length) setUserProfile((prev) => ({ ...prev, ...partial }));
@@ -272,6 +280,16 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <AutoTranslate language={currentLanguage} />
+      {/* First visit: create the profile before entering the app */}
+      {showProfileSetup && autofillSession && (
+        <ProfileSetup
+          language={currentLanguage}
+          onLanguageChange={setCurrentLanguage}
+          session={autofillSession}
+          onSession={handleAutofillSession}
+          onDone={() => setShowProfileSetup(false)}
+        />
+      )}
       <SiteHeader
         current={currentChannel}
         onNavigate={setCurrentChannel}

@@ -58,6 +58,45 @@ export function toAsciiDigits(raw: string): string {
   });
 }
 
+/** Spoken digits 0-9 in every supported language (English and Hinglish too). */
+const DIGIT_WORDS: string[][] = [
+  ['zero', 'oh', 'o', 'shunya', 'shoonya', 'शून्य', 'பூஜ்ஜியம்', 'பூஜ்யம்', 'సున్నా', 'ಸೊನ್ನೆ', 'പൂജ്യം', 'শূন্য', 'શૂન્ય', 'ਸਿਫ਼ਰ', 'ਜ਼ੀਰੋ', 'ଶୂନ', 'ଶୂନ୍ୟ', 'صفر', 'ज़ीरो', 'जीरो'],
+  ['one', 'ek', 'एक', 'ஒன்று', 'ఒకటి', 'ಒಂದು', 'ഒന്ന്', 'এক', 'એક', 'ਇੱਕ', 'ଏକ', 'ایک'],
+  ['two', 'do', 'दो', 'दोन', 'இரண்டு', 'రెండు', 'ಎರಡು', 'രണ്ട്', 'দুই', 'બે', 'ਦੋ', 'ଦୁଇ', 'دو'],
+  ['three', 'teen', 'tin', 'तीन', 'மூன்று', 'మూడు', 'ಮೂರು', 'മൂന്ന്', 'তিন', 'ત્રણ', 'ਤਿੰਨ', 'ତିନି', 'تین'],
+  ['four', 'char', 'chaar', 'चार', 'நான்கு', 'నాలుగు', 'ನಾಲ್ಕು', 'നാല്', 'চার', 'ચાર', 'ਚਾਰ', 'ଚାରି', 'چار'],
+  ['five', 'paanch', 'panch', 'पांच', 'पाँच', 'पाच', 'ஐந்து', 'ఐదు', 'ಐದು', 'അഞ്ച്', 'পাঁচ', 'પાંચ', 'ਪੰਜ', 'ପାଞ୍ଚ', 'پانچ'],
+  ['six', 'chhe', 'che', 'chhah', 'छह', 'छः', 'छे', 'सहा', 'ஆறு', 'ఆరు', 'ಆರು', 'ആറ്', 'ছয়', 'છ', 'ਛੇ', 'ଛଅ', 'چھ', 'چھے'],
+  ['seven', 'saat', 'सात', 'ஏழு', 'ఏడు', 'ಏಳು', 'ഏഴ്', 'সাত', 'સાત', 'ਸੱਤ', 'ସାତ', 'سات'],
+  ['eight', 'aath', 'आठ', 'எட்டு', 'ఎనిమిది', 'ಎಂಟು', 'എട്ട്', 'আট', 'આઠ', 'ਅੱਠ', 'ଆଠ', 'آٹھ'],
+  ['nine', 'nau', 'नौ', 'नऊ', 'ஒன்பது', 'తొమ్మిది', 'ಒಂಬತ್ತು', 'ഒമ്പത്', 'নয়', 'নয়', 'નવ', 'ਨੌਂ', 'ਨੌ', 'ନଅ', 'نو'],
+];
+const DIGIT_OF = new Map<string, string>(DIGIT_WORDS.flatMap((words, d) => words.map((w) => [w, String(d)] as [string, string])));
+const REPEAT: Record<string, number> = { double: 2, triple: 3, dabal: 2, डबल: 2, ट्रिपल: 3 };
+
+/**
+ * A number said digit by digit ("nine eight double seven…", "नौ आठ सात…") as its digits, for
+ * mobile, PIN, Aadhaar and account numbers. Null unless at least three digits were spoken.
+ */
+export function spokenDigits(text: string): string | null {
+  const words = toAsciiDigits(text).toLowerCase().replace(/[.,!?।۔،]/g, ' ').split(/[\s-]+/).filter(Boolean);
+  let out = '';
+  let repeat = 1;
+  let spoken = 0;
+  for (const w of words) {
+    if (REPEAT[w]) {
+      repeat = REPEAT[w];
+      continue;
+    }
+    const d = DIGIT_OF.get(w) ?? (/^\d+$/.test(w) ? w : null);
+    if (d === null) continue;
+    if (DIGIT_OF.has(w)) spoken++;
+    out += d.repeat(repeat);
+    repeat = 1;
+  }
+  return spoken >= 3 ? out : null;
+}
+
 /** Said when the AI service cannot be reached. */
 export const OFFLINE_REPLIES: Record<LanguageCode, string> = {
   en: 'Sorry, I could not reach the AI service just now. Please try again in a moment. Meanwhile, you can browse schemes with official links under "Find Schemes", or call the toll-free helpline 1800-11-2529.',

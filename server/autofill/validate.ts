@@ -3,7 +3,7 @@
  * These checks only test the shape of a value — they cannot confirm it is genuine.
  */
 import type { FieldType } from '../../src/data/autofillSchema';
-import { toAsciiDigits } from '../../src/data/languageTools';
+import { spokenDigits, toAsciiDigits } from '../../src/data/languageTools';
 
 /* Verhoeff checksum used by Aadhaar numbers */
 const D = [
@@ -153,7 +153,9 @@ export interface Normalised {
  * valid value — the caller may then ask Gemini to interpret free speech.
  */
 export function normalise(type: FieldType, raw: string, options?: string[]): Normalised {
-  const text = spokenToPlain(String(raw ?? '').trim(), type === 'number' || type === 'money').trim();
+  let text = spokenToPlain(String(raw ?? '').trim(), type === 'number' || type === 'money').trim();
+  // Numbers said digit by digit ("nine eight seven…") for digit-string fields
+  if (type === 'mobile' || type === 'pincode' || type === 'aadhaar' || type === 'account') text = spokenDigits(text) ?? text;
   if (!text) return { ok: false, error: 'Empty answer' };
   const compact = text.replace(/[\s-]/g, '');
 

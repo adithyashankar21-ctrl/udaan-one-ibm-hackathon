@@ -1,6 +1,8 @@
 import express from 'express';
 import { Type } from '@google/genai';
+import crypto from 'crypto';
 import type { Generate } from '../autofill/ocr';
+import { PASS_MARK, issuePass, loadPublicCertificate } from './certificates';
 
 /**
  * Learning Hub AI tutor.
@@ -106,6 +108,22 @@ const CURRICULUM_SCHEMA = {
   },
   required: ['title', 'description', 'level', 'modules', 'requirements'],
 };
+
+const EXAM_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      question: { type: Type.STRING },
+      options: { type: Type.ARRAY, items: { type: Type.STRING } },
+      answerIndex: { type: Type.INTEGER },
+      explanation: { type: Type.STRING },
+    },
+    required: ['question', 'options', 'answerIndex', 'explanation'],
+  },
+};
+
+const EXAM_QUESTIONS = 10;
 
 const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
 
@@ -267,6 +285,72 @@ If the learner's own code is included, point out the exact bug and why it happen
       console.warn('Doubt solving failed:', String(err?.message || '').slice(0, 140));
       res.status(503).json({ error: unavailable(err, 'The AI tutor is busy right now. Please try again in a moment.') });
     }
+  });
+
+  /* ── Final assessment and certificates ─────────────────────────── */
+
+  /** Answer keys stay here, so the browser never sees them. */
+  const exams = new Map<string, { courseId: string; courseTitle: string; modules: string[]; duration?: string; answers: number[]; explanations: string[]; expires: number }>();
+
+  /** A 10-question assessment across the whole course, written by the tutor. */
+  router.post('/exam', async (req, res) => {
+    const courseId = clip(req.body?.courseId, 120);
+    const course = clip(req.body?.course, 120);
+    const language = clip(req.body?.language || 'English', 30);
+    const modules: Array<{ title: string; subtopics: string[] }> = (Array.isArray(req.body?.modules) ? req.body.modules : [])
+      .slice(0, 20)
+      .map((m: any) => ({ title: clip(m?.title, 120), subtopics: (Array.isArray(m?.subtopics) ? m.subtopics : []).slice(0, 15).map((x: any) => clip(x, 120)) }));
+    if (!courseId || !course || !modules.length) return res.status(400).json({ error: 'Choose a course first.' });
+    try {
+      const response = await generate(
+        {
+          contents: `Write the final assessment for the "${course}" course: ${EXAM_QUESTIONS} multiple-choice questions that together cover these modules fairly:
+${modules.map((m) => `- ${m.title}: ${m.subtopics.join('; ')}`).join('\n')}
+Each question has exactly 4 options and one correct answer (answerIndex is 0-based), at the level of this course. Test understanding and practical use, not trivia or trick wording. Mix the position of the correct answer. Give a one-sentence explanation for each.`,
+          config: { systemInstruction: tutorRules(course, language), responseMimeType: 'application/json', responseSchema: EXAM_SCHEMA, thinkingConfig: { thinkingBudget: 1024 } },
+        },
+        undefined,
+        { timeoutMs: 60000 }
+      );
+      const items = (JSON.parse(response.text || '[]') as any[]).filter((q) => q?.question && Array.isArray(q.options) && q.options.length === 4 && q.answerIndex >= 0 && q.answerIndex < 4).slice(0, EXAM_QUESTIONS);
+      if (items.length < 5) throw new Error('assessment too short');
+      const examId = crypto.randomBytes(12).toString('base64url');
+      exams.set(examId, {
+        courseId,
+        courseTitle: course,
+        modules: modules.map((m) => m.title),
+        duration: clip(req.body?.duration, 60) || undefined,
+        answers: items.map((q) => q.answerIndex),
+        explanations: items.map((q) => q.explanation || ''),
+        expires: Date.now() + 2 * 60 * 60 * 1000,
+      });
+      if (exams.size > 500) exams.delete(exams.keys().next().value as string);
+      res.json({ examId, questions: items.map((q) => ({ question: q.question, options: q.options })) });
+    } catch (err: any) {
+      console.warn('Assessment generation failed:', String(err?.message || '').slice(0, 140));
+      res.status(503).json({ error: unavailable(err, 'Guru could not prepare the assessment right now. Please try again in a moment.') });
+    }
+  });
+
+  /** Marks the answers; a pass (70% or more) comes with a one-time token for the certificate. */
+  router.post('/exam/:id/grade', (req, res) => {
+    const exam = exams.get(req.params.id);
+    if (!exam || exam.expires < Date.now()) return res.status(404).json({ error: 'This assessment has expired. Please start it again.' });
+    exams.delete(req.params.id);
+    const given: unknown[] = Array.isArray(req.body?.answers) ? req.body.answers : [];
+    const results = exam.answers.map((correct, i) => ({ correct, chosen: typeof given[i] === 'number' ? (given[i] as number) : -1, explanation: exam.explanations[i] }));
+    const score = results.filter((r) => r.correct === r.chosen).length;
+    const total = exam.answers.length;
+    const passed = score / total >= PASS_MARK;
+    const passToken = passed ? issuePass({ courseId: exam.courseId, courseTitle: exam.courseTitle, modules: exam.modules, duration: exam.duration, score, total }) : undefined;
+    res.json({ score, total, passed, passMark: Math.ceil(total * PASS_MARK), results, passToken });
+  });
+
+  /** Public check of a certificate by its ID (shows only what is printed on it). */
+  router.get('/certificate/:id', (req, res) => {
+    const c = loadPublicCertificate(String(req.params.id).toUpperCase());
+    if (!c) return res.status(404).json({ valid: false });
+    res.json({ valid: true, certificate: c });
   });
 
   return router;

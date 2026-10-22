@@ -25,6 +25,7 @@ import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from '
 import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
 import { authEnabled, bearerToken, verifyUser } from '../auth';
 import { INTERNAL_KEY } from '../internal';
+import { newCertificateId, savePublicCertificate, takePass, type Certificate } from '../learn/certificates';
 import {
   RETENTION_DAYS,
   deleteSession,
@@ -796,6 +797,43 @@ export function createAutofillRouter(generate: Generate) {
     if (!t) return res.status(401).json({ error: 'Helpline session expired.' });
     return serial(t.sessionHash, () => helplineAnswer(req, res));
   });
+
+  /* Learning Hub certificates, kept with the learner's account */
+
+  router.get(
+    '/certificates',
+    withSession((_req, res, session) => {
+      res.json({ certificates: session.certificates || [] });
+    })
+  );
+
+  router.post(
+    '/certificates',
+    withSession((req, res, session) => {
+      const name = session.profile.fields.fullName?.value?.trim();
+      if (!name) return res.status(400).json({ error: 'Add your full name to your profile first — it is printed on the certificate.' });
+      const pass = takePass(String(req.body?.passToken || ''));
+      if (!pass) return res.status(400).json({ error: 'Please pass the final assessment again to get the certificate.' });
+      const existing = (session.certificates || []).find((c) => c.courseId === pass.courseId);
+      // A better score replaces the earlier certificate for the same course
+      if (existing && existing.score / existing.total >= pass.score / pass.total) return res.json({ certificate: existing });
+      const cert: Certificate = {
+        id: existing?.id || newCertificateId(),
+        name,
+        courseId: pass.courseId,
+        courseTitle: pass.courseTitle,
+        modules: pass.modules,
+        duration: pass.duration,
+        score: pass.score,
+        total: pass.total,
+        issuedAt: Date.now(),
+      };
+      session.certificates = [cert, ...(session.certificates || []).filter((c) => c.courseId !== cert.courseId)];
+      saveSession(session);
+      savePublicCertificate(cert);
+      res.json({ certificate: cert });
+    })
+  );
 
   /*
    * Real phone calls (the Twilio helpline, server/voice): a caller's details are kept by their

@@ -35,6 +35,9 @@ import { useSpeaker } from '../learning/useSpeaker';
 import { useDictation } from '../smartapply/media';
 import { OpportunityTabs } from './SkillsPage';
 import { Meter, Skeleton } from '../ui/kit';
+import { FinalAssessment, MyCertificates } from '../learning/Certificates';
+import type { Certificate } from '../../services/learnApi';
+import { autofillApi } from '../../services/autofillApi';
 
 /* ── per-viewer progress (convenience only; works without storage) ────── */
 
@@ -418,7 +421,9 @@ const CourseWorkspace: React.FC<{
   onBack: () => void;
   startWithDoubt: boolean;
   initialQuestion?: { text: string; nonce: number; speak?: boolean } | null;
-}> = ({ course, langConfig, progress, onComplete, onBack, startWithDoubt, initialQuestion }) => {
+  certificate?: Certificate | null;
+  onCertificate: (c: Certificate) => void;
+}> = ({ course, langConfig, progress, onComplete, onBack, startWithDoubt, initialQuestion, certificate, onCertificate }) => {
   const first = { module: course.modules[0], subtopic: course.modules[0].subtopics[0] };
   const [selected, setSelected] = useState<Selection | null>(startWithDoubt ? null : first);
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -513,6 +518,8 @@ const CourseWorkspace: React.FC<{
           </div>
         </div>
       </header>
+
+      <FinalAssessment course={course} language={language} ready={done >= total} remaining={total - done} earned={certificate} onEarned={onCertificate} />
 
       <RequirementsCard course={course} />
 
@@ -756,6 +763,11 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
   const [progress, setProgress] = useState<Set<string>>(loadProgress);
   const [open, setOpen] = useState<{ courseId: string; doubt: boolean; question?: { text: string; nonce: number; speak?: boolean } | null } | null>(null);
   const [custom, setCustom] = useState<LearningCourse[]>(loadCustom);
+  // Certificates live with the learner's account (none until they have a profile)
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  useEffect(() => {
+    autofillApi.certificates().then(setCertificates).catch(() => setCertificates([]));
+  }, []);
   const [building, setBuilding] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
   const language = langConfig.name || 'English';
@@ -842,6 +854,8 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
                 onBack={() => setOpen(null)}
                 startWithDoubt={open!.doubt}
                 initialQuestion={open!.question}
+                certificate={certificates.find((c) => c.courseId === course.id)}
+                onCertificate={(c) => setCertificates((list) => [c, ...list.filter((x) => x.courseId !== c.courseId)])}
               />
             </motion.div>
           ) : (
@@ -891,6 +905,8 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
                   </ul>
                 </section>
               )}
+
+              <MyCertificates certificates={certificates} />
 
               {LEARNING_TRACKS.map((track) => (
                 <section key={track.id} aria-labelledby={`track-${track.id}`} className="space-y-5">

@@ -227,6 +227,9 @@ export const autofillApi = {
 
   updateProfile: (updates: Partial<Record<ProfileKey, string>>, source: string, confirm = false) =>
     call<SessionState & { errors: Record<string, string> }>('/profile', { method: 'POST', json: { updates, source, confirm } }),
+  /** Learning Hub certificates earned by this person. */
+  certificates: () => call<{ certificates: import('./learnApi').Certificate[] }>('/certificates').then((r) => r.certificates),
+  issueCertificate: (passToken: string) => call<{ certificate: import('./learnApi').Certificate }>('/certificates', { method: 'POST', json: { passToken } }).then((r) => r.certificate),
   resolveConflict: (conflictId: string, choice: { index?: number; value?: string }) =>
     call<SessionState>('/profile/resolve', { method: 'POST', json: { conflictId, ...choice } }),
 

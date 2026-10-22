@@ -141,4 +141,6 @@ export interface SessionData {
   documents: DocumentRecord[];
   photo?: ApplicantPhoto;
   drafts: Draft[];
+  /** Learning Hub certificates earned by this person. */
+  certificates?: import('../learn/certificates').Certificate[];
 }

@@ -130,3 +130,49 @@ export interface LearningEntry {
 export function announceLearnIntent(detail: Omit<LearningEntry, 'nonce'>) {
   window.dispatchEvent(new CustomEvent<LearningEntry>(LEARN_INTENT_EVENT, { detail: { ...detail, nonce: Date.now() } }));
 }
+
+/* ── Final assessment and certificates ─────────────────────────────── */
+
+export interface ExamQuestion {
+  question: string;
+  options: string[];
+}
+
+export interface ExamResult {
+  score: number;
+  total: number;
+  passed: boolean;
+  passMark: number;
+  results: Array<{ correct: number; chosen: number; explanation: string }>;
+  passToken?: string;
+}
+
+export interface Certificate {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
+  modules: string[];
+  duration?: string;
+  score: number;
+  total: number;
+  issuedAt: number;
+}
+
+export const startExam = (course: LearningCourse, language: string) =>
+  post<{ examId: string; questions: ExamQuestion[] }>('exam', {
+    courseId: course.id,
+    course: course.title,
+    language,
+    duration: course.requirements?.duration,
+    modules: course.modules.map((m) => ({ title: m.title, subtopics: m.subtopics })),
+  });
+
+export const gradeExam = (examId: string, answers: number[]) => post<ExamResult>(`exam/${encodeURIComponent(examId)}/grade`, { answers });
+
+/** Anyone can check a certificate by its ID. */
+export async function verifyCertificate(id: string): Promise<Certificate | null> {
+  const res = await fetch(`/api/learn/certificate/${encodeURIComponent(id)}`);
+  if (!res.ok) return null;
+  return (await res.json()).certificate || null;
+}

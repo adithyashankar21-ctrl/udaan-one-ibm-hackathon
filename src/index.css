@@ -288,3 +288,26 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
   .print\:hidden { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Printing a certificate: only the certificate, on one landscape page */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-certificate,
+  .print-certificate * {
+    visibility: visible;
+  }
+  .print-certificate {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

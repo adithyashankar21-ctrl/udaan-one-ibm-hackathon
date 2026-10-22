@@ -26,9 +26,10 @@ const SCHEMA = {
     blurryOrDark: { type: Type.BOOLEAN },
     faceHeightShare: { type: Type.NUMBER },
     photoOfDocumentOrScreen: { type: Type.BOOLEAN },
+    realPhotograph: { type: Type.BOOLEAN },
     notes: { type: Type.STRING },
   },
-  required: ['peopleCount', 'faceVisible', 'facingCamera', 'eyesVisible', 'darkGlassesOrFaceCovered', 'plainBackground', 'blurryOrDark', 'faceHeightShare', 'photoOfDocumentOrScreen'],
+  required: ['peopleCount', 'faceVisible', 'facingCamera', 'eyesVisible', 'darkGlassesOrFaceCovered', 'plainBackground', 'blurryOrDark', 'faceHeightShare', 'photoOfDocumentOrScreen', 'realPhotograph'],
 };
 
 const PROMPT = `This image is meant to be a passport-size photo of a person applying for a government document or scheme in India. Look at it and answer:
@@ -41,6 +42,7 @@ const PROMPT = `This image is meant to be a passport-size photo of a person appl
 - blurryOrDark: the face is blurred, too dark or overexposed.
 - faceHeightShare: the head (chin to top of hair) height as a share of the image height, 0-1.
 - photoOfDocumentOrScreen: it is a photo of an ID card, a printed photo, or a screen rather than a photo of the person.
+- realPhotograph: true only if this is a camera photograph of a real, living human. False for a drawing, sketch, painting, cartoon, anime, emoji, avatar, 3D render, AI-generated or heavily filtered face, doll, mask, statue or mannequin.
 Give short notes on anything that would make an office reject it.`;
 
 export async function checkPhoto(generate: Generate, file: CheckedFile): Promise<Omit<ApplicantPhoto, 'uploadedAt'>> {
@@ -77,7 +79,9 @@ export async function checkPhoto(generate: Generate, file: CheckedFile): Promise
       { retryBusy: true, timeoutMs: 30000 }
     );
     const r = JSON.parse(res.text || '{}');
-    if (r.photoOfDocumentOrScreen) {
+    if (r.realPhotograph === false) {
+      checks.push({ id: 'face', status: 'fail', label: 'This is not a real photograph', detail: 'It looks like a drawing, cartoon, avatar or computer-made image. Take a real camera photo of your face.' });
+    } else if (r.photoOfDocumentOrScreen) {
       checks.push({ id: 'face', status: 'fail', label: 'This is a photo of a card, print or screen', detail: 'Take a fresh photo of yourself instead — offices reject copies of other photos.' });
     } else if (!r.peopleCount || !r.faceVisible) {
       checks.push({ id: 'face', status: 'fail', label: 'No clear face found', detail: 'The photo must show your whole face, from the top of the head to the chin.' });

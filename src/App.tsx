@@ -31,6 +31,7 @@ import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
 import { MissingQuestions } from './components/smartapply/MissingQuestions';
 import { SUPPORTED_LANGUAGES } from './data/languages';
+import { AutoTranslate } from './components/AutoTranslate';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
 import { aiService } from './services/aiService';
@@ -170,7 +171,18 @@ export default function App() {
 
   // Any channel (voice, chat, helpline, kiosk) can hand an "I want to apply" request to Smart Apply
   useEffect(() => {
-    const onIntent = (e: Event) => setApplyIntent((e as CustomEvent<ApplyIntentDetail>).detail);
+    const onIntent = (e: Event) => {
+      const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
+      // The helpline call takes the application itself, in the call
+      if (detail.channel === 'helpline' && channelRef.current === 'ivr' && detail.schemeId) return;
+      // The voice agent goes straight on: Smart Apply opens and continues by voice
+      if (detail.channel === 'voice' && channelRef.current === 'voice_studio' && detail.schemeId) {
+        // Let the assistant finish saying that Smart Apply is opening
+        aiService.whenSilent().then(() => openSmartApply({ schemeId: detail.schemeId, channel: 'voice' }));
+        return;
+      }
+      setApplyIntent(detail);
+    };
     window.addEventListener(APPLY_INTENT_EVENT, onIntent);
     return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
   }, []);
@@ -261,6 +273,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <AutoTranslate language={currentLanguage} />
       <SiteHeader
         current={currentChannel}
         onNavigate={setCurrentChannel}

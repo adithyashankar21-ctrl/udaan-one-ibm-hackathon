@@ -206,7 +206,7 @@ Return the value to write on an English form: numbers as digits, dates as DD/MM/
       },
     },
     // One fast model is enough to read a short answer
-    ['gemini-2.5-flash-lite', 'gemini-2.5-flash'],
+    ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'],
     { retryBusy: false, timeoutMs: 4000 }
   );
   const parsed = JSON.parse(response.text || '{}');

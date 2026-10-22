@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createAutofillRouter, autofillErrorHandler } from './server/autofill/router';
 import { createLearnRouter } from './server/learn/router';
+import { createTranslateRouter } from './server/i18n/router';
+import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
 import { detectIntentLocal } from './server/autofill/schemes';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
@@ -49,7 +51,8 @@ const ai = new GoogleGenAI({
 
 // Text models tried in order. A "busy" (503) or rate-limit error moves on to the next
 // model after one short retry, so brief Gemini overloads do not reach the user.
-const TEXT_MODELS = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
+// Gemini 2.5 models are closed to new API keys; these are available to current keys
+const TEXT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 
 function isTransientError(err: any): boolean {
   const msg = String(err?.message || err || '');
@@ -72,6 +75,19 @@ const LEARN_COURSE_NAMES: Record<string, string> = {
 // Models whose free-tier daily quota ran out are skipped for a while instead of retried on every request
 const exhaustedUntil = new Map<string, number>();
 
+/**
+ * Gemini 2.5 models take a thinking token budget; newer models reject it and take a thinking
+ * level instead. Callers keep writing budgets — this converts them for the model in use.
+ */
+function forModel(request: Record<string, any>, model: string): Record<string, any> {
+  const thinking = request.config?.thinkingConfig;
+  if (!thinking || thinking.thinkingBudget === undefined || /gemini-2\.5/.test(model)) return { ...request, model };
+  const { thinkingBudget, ...rest } = thinking;
+  // 'low' and 'high' are the levels every newer model accepts ('minimal' is not)
+  const thinkingLevel = thinkingBudget <= 1024 ? 'low' : 'high';
+  return { ...request, model, config: { ...request.config, thinkingConfig: { ...rest, thinkingLevel } } };
+}
+
 async function generateWithFallback(
   request: Record<string, any>,
   models: string[] = TEXT_MODELS,
@@ -84,7 +100,7 @@ async function generateWithFallback(
       try {
         // Cap each attempt so one slow model cannot stall the conversation
         return await Promise.race([
-          ai.models.generateContent({ ...request, model } as any),
+          ai.models.generateContent(forModel(request, model) as any),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timeout after ${timeoutMs}ms (503)`)), timeoutMs)),
         ]);
       } catch (err: any) {
@@ -110,6 +126,7 @@ async function generateWithFallback(
 // Smart Apply & Autofill (document intelligence, unified profile, form filling)
 app.use('/api/autofill', createAutofillRouter(generateWithFallback));
 app.use('/api/learn', createLearnRouter(generateWithFallback));
+app.use('/api/i18n', createTranslateRouter(generateWithFallback));
 app.use(autofillErrorHandler);
 
 // Health check endpoint
@@ -123,26 +140,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // Conversational AI voice assistant endpoint
-const OFFLINE_REPLIES: Record<string, string> = {
-  ta: 'மன்னிக்கவும், இப்போது AI சேவையுடன் இணைக்க முடியவில்லை. சிறிது நேரத்தில் மீண்டும் முயற்சிக்கவும். அதுவரை "திட்டங்கள்" பக்கத்தில் அதிகாரப்பூர்வ இணைப்புகளுடன் திட்டங்களைப் பார்க்கலாம், அல்லது 1800-11-2529 என்ற இலவச உதவி எண்ணை அழைக்கலாம்.',
-  hi: 'माफ़ कीजिए, अभी AI सेवा से जुड़ नहीं पा रहा हूँ। कृपया थोड़ी देर बाद फिर कोशिश करें। तब तक "योजनाएँ खोजें" में आधिकारिक लिंक के साथ योजनाएँ देख सकते हैं, या टोल-फ्री नंबर 1800-11-2529 पर कॉल कर सकते हैं।',
-  te: 'క్షమించండి, ఇప్పుడు AI సేవకు కనెక్ట్ కాలేకపోతున్నాను. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించండి. అప్పటివరకు "పథకాలు" పేజీలో అధికారిక లింకులతో పథకాలు చూడవచ్చు, లేదా 1800-11-2529 టోల్-ఫ్రీ నంబర్‌కు కాల్ చేయవచ్చు.',
-  kn: 'ಕ್ಷಮಿಸಿ, ಈಗ AI ಸೇವೆಗೆ ಸಂಪರ್ಕಿಸಲು ಆಗುತ್ತಿಲ್ಲ. ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ. ಅಲ್ಲಿಯವರೆಗೆ "ಯೋಜನೆಗಳು" ಪುಟದಲ್ಲಿ ಅಧಿಕೃತ ಲಿಂಕ್‌ಗಳೊಂದಿಗೆ ಯೋಜನೆಗಳನ್ನು ನೋಡಬಹುದು, ಅಥವಾ 1800-11-2529 ಗೆ ಕರೆ ಮಾಡಬಹುದು.',
-  ml: 'ക്ഷമിക്കണം, ഇപ്പോൾ AI സേവനവുമായി ബന്ധിപ്പിക്കാൻ കഴിയുന്നില്ല. അൽപ്പസമയം കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കൂ. അതുവരെ "പദ്ധതികൾ" പേജിൽ ഔദ്യോഗിക ലിങ്കുകളോടെ പദ്ധതികൾ കാണാം, അല്ലെങ്കിൽ 1800-11-2529 എന്ന ടോൾ ഫ്രീ നമ്പറിൽ വിളിക്കാം.',
-  en: 'Sorry, I could not reach the AI service just now. Please try again in a moment. Meanwhile, you can browse schemes with official links under "Find Schemes", or call the toll-free helpline 1800-11-2529.',
-};
-
-function offlineReply(language: string, lastUserMsg: string): string {
-  const l = (language || '').toLowerCase();
-  const code =
-    /[\u0B80-\u0BFF]/.test(lastUserMsg) || l.includes('tamil') || l === 'ta' ? 'ta'
-    : /[\u0C00-\u0C7F]/.test(lastUserMsg) || l.includes('telugu') || l === 'te' ? 'te'
-    : /[\u0C80-\u0CFF]/.test(lastUserMsg) || l.includes('kannada') || l === 'kn' ? 'kn'
-    : /[\u0D00-\u0D7F]/.test(lastUserMsg) || l.includes('malayalam') || l === 'ml' ? 'ml'
-    : /[\u0900-\u097F]/.test(lastUserMsg) || l.includes('hindi') || l === 'hi' ? 'hi'
-    : 'en';
-  return OFFLINE_REPLIES[code];
-}
 
 app.post('/api/ai/chat', async (req, res) => {
   const { messages, userProfile, language = 'Hindi', channel = 'web_voice' } = req.body;
@@ -152,7 +149,15 @@ app.post('/api/ai/chat', async (req, res) => {
   const localIntent = detectIntentLocal(String(lastUserText));
   const applyIntent = localIntent.wantsToApply ? { schemeId: localIntent.schemeId } : null;
   const applyNote = applyIntent
-    ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one sentence, tell them UDAAN ONE's Smart Apply can fill the application for them from their documents and answers, and that a "Continue to Smart Apply" button is now on the screen. Never say an application has been submitted.`
+    ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one short sentence, ${
+        !applyIntent.schemeId
+          ? 'ask which scheme or document they want to apply for.'
+          : /helpline|ivr|phone/i.test(String(channel))
+            ? 'say you will now take their application details in this call, one question at a time.'
+            : /voice/i.test(String(channel))
+              ? "say Smart Apply is opening now and will ask the application questions by voice, then help with documents and the photo."
+              : 'tell them UDAAN ONE\'s Smart Apply can fill the application from their documents and answers, and that a "Continue to Smart Apply" button is now on the screen.'
+      } Do not ask the application questions yourself. Never say an application has been submitted.`
     : '';
 
   // Learning requests ("teach me Python", "I want to learn tailoring") are taught here and handed to the Learning Hub
@@ -192,7 +197,7 @@ RULES:
      • Official documents and certificates (UDAAN ONE's Smart Apply can prepare these and tell people which proofs are accepted): PAN — instant e-PAN with Aadhaar on incometax.gov.in, or Form 49A via Protean / UTIITSL (Aadhaar alone can serve as proof of identity, address and date of birth); voter ID — Form 6 on voters.eci.gov.in, needing proof of age, proof of address and a photo (Form 8 for corrections); passport — apply on passportindia.gov.in then attend a Passport Seva Kendra with proof of present address and proof of date of birth; Aadhaar address update — myaadhaar.uidai.gov.in, other updates at an Aadhaar centre; income, caste and residence certificates — State e-District portal, a CSC or the Tahsildar office; birth certificate — local Registrar or crsorgi.gov.in; learner's driving licence — sarathi.parivahan.gov.in; e-Shram card — eshram.gov.in; UDID disability card — swavlambancard.gov.in; ration card — the State food department (links on nfsa.gov.in). Fees, timelines and accepted documents are set by the issuing authority — tell people to confirm on the official portal.
    - For local offices, name the type of office (District Social Welfare Office, State SC Development Corporation, nearest Skill India centre, CSC) rather than inventing addresses or phone numbers. The UDAAN ONE helpline is 1800-11-2529.
 3. PERSONALISE: if the person shares their name, trade or district, use it and give 1–2 concrete next steps for their situation.
-4. LANGUAGE: reply entirely in the language the person uses (Tamil, Hindi, Telugu, Kannada, Malayalam, English, or another Indian language), in its native script, in simple everyday words.
+4. LANGUAGE: reply entirely in ${language}, in its native script, in simple everyday words — even when the question is typed in English. Only if the person clearly speaks a different language than ${language}, reply in theirs.
 5. VOICE STYLE: 2 to 4 short, warm sentences. No bullet lists, no markdown, no emojis — this will be spoken aloud. End with one helpful next step (for example, offering to prepare their Kaushal Patra roadmap).
 6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${teachNote}
 `;
@@ -249,14 +254,13 @@ RULES:
     });
   }
 
-  // Multi-model resilience: Try high-speed gemini-3.1-flash-lite, fallback to gemini-3.8-flash, then gemini-flash-latest
   // Fastest model first for quick voice replies; heavier models as backups
   let lastError: any = null;
   try {
     const response = await generateWithFallback(
       // No extended reasoning: short spoken replies do not need it, and it adds seconds
       { contents: sanitizedContents, config: { systemInstruction, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } } },
-      ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'],
+      ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'],
       { retryBusy: false, timeoutMs: 9000 }
     );
     const replyText = response.text?.trim();
@@ -501,16 +505,7 @@ async function fetchGoogleTTS(text: string, lang: string = 'en'): Promise<Buffer
 }
 
 function detectScriptLanguage(text: string, fallback: string = 'en'): string {
-  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta';
-  if (/[\u0C00-\u0C7F]/.test(text)) return 'te';
-  if (/[\u0C80-\u0CFF]/.test(text)) return 'kn';
-  if (/[\u0D00-\u0D7F]/.test(text)) return 'ml';
-  if (/[\u0900-\u097F]/.test(text)) return 'hi';
-  if (/[\u0980-\u09FF]/.test(text)) return 'bn';
-  if (/[\u0A80-\u0AFF]/.test(text)) return 'gu';
-  if (/[\u0A00-\u0A7F]/.test(text)) return 'pa';
-  if (/[\u0B00-\u0B7F]/.test(text)) return 'or';
-  return fallback;
+  return scriptLanguage(text, toLanguageCode(fallback));
 }
 
 function cleanSpeechText(raw: string): string {
@@ -589,6 +584,12 @@ const TTS_LANG_STYLES: Record<string, string> = {
   te: 'Warm, respectful, articulate native Telugu speaking counselor with natural and clear cadence',
   kn: 'Warm, respectful, articulate native Kannada speaking counselor with natural and clear cadence',
   ml: 'Warm, respectful, articulate native Malayalam speaking counselor with natural and clear cadence',
+  mr: 'Warm, respectful, articulate native Marathi speaking counselor with natural and clear cadence',
+  bn: 'Warm, respectful, articulate native Bengali speaking counselor with natural and clear cadence',
+  gu: 'Warm, respectful, articulate native Gujarati speaking counselor with natural and clear cadence',
+  pa: 'Warm, respectful, articulate native Punjabi speaking counselor with natural and clear cadence',
+  or: 'Warm, respectful, articulate native Odia speaking counselor with natural and clear cadence',
+  ur: 'Warm, respectful, articulate native Urdu speaking counselor with natural and clear cadence',
   en: 'Warm, articulate, clear, and reassuring Indian English counselor speaking with natural human cadence',
 };
 
@@ -756,9 +757,9 @@ app.post('/api/ai/transcribe', async (req, res) => {
         });
         transcript = fallbackResponse.text || '';
       } catch (secErr: any) {
-        console.warn('gemini-3.8-flash transcribe failed, trying gemini-2.5-flash:', secErr?.message);
+        console.warn('gemini-3.8-flash transcribe failed, trying gemini-3.5-flash-lite:', secErr?.message);
         const tertiary = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.5-flash-lite',
           contents: {
             parts: [
               audioPart,

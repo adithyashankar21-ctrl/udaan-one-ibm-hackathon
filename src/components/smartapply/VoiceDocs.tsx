@@ -4,12 +4,15 @@ import { DOC_KINDS, type DocKind } from '../../data/autofillSchema';
 import { autofillApi, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { CameraScanner } from './CameraScanner';
 import { VOICE_COMMANDS, preparePassportPhoto, useVoiceTurns } from './media';
+import { spokenIn } from '../../services/translate';
+import type { LanguageCode } from '../../types';
 
 interface Props {
   /** Change `n` to start the voice hand-off to documents. `afterQuestions`: the spoken questions just ended. */
   start: { n: number; afterQuestions: boolean };
   speechLocale: string;
-  hindi: boolean;
+  /** Spoken language: English and Hindi phrases are written here, others are translated. */
+  language: LanguageCode;
   /** Latest draft and photo state (read when each step runs). */
   getDraft: () => DraftView | null;
   hasPhoto: () => boolean;
@@ -17,7 +20,11 @@ interface Props {
   refreshDraft: () => Promise<DraftView | null>;
   /** The person prefers to answer document details themselves: continue with questions. */
   onAnswerInstead: () => void;
-  onAllDone: () => void;
+  /** Show a step of the application (3 = review, 4 = approve and download). */
+  onShowStep: (step: number) => void;
+  /** Approve the current details; resolves to false if they are not ready. */
+  onApprove: () => Promise<boolean>;
+  onDownload: () => Promise<void>;
 }
 
 const PH = {
@@ -35,6 +42,13 @@ const PH = {
     left: (n: number, labels: string) => `${n} ${n === 1 ? 'detail is' : 'details are'} still missing: ${labels}. You can answer on the screen.`,
     allDone: 'Everything is filled. Opening the review so you can check your details.',
     notHeard: 'Voice paused. Tap Fill by voice to continue.',
+    conflicts: (n: number) => `${n} ${n === 1 ? 'detail has' : 'details have'} two different values from your documents. Please choose the right one on the screen, then say continue.`,
+    review: (n: number, check: string[]) =>
+      `All ${n} details are filled.${check.length ? ` Please check these on the screen: ${check.join(', ')}.` : ''} Say read to hear every detail, say approve if they are all correct, or say stop to check them yourself.`,
+    afterRead: 'Say approve if everything is correct, or stop to change something on the screen.',
+    notReady: 'The application is not ready to approve yet. Please check the screen.',
+    approved: 'Approved. Say download to save your filled application as a PDF.',
+    downloaded: (where: string) => `Your application is downloaded. Nothing has been submitted. Take it, with your original documents, to ${where}.`,
   },
   hi: {
     doc: (doc: string, labels: string) => `${labels} आपके ${doc} से भरा जा सकता है। कैमरे में दिखाने के लिए स्कैन बोलिए, या ख़ुद बताने के लिए जवाब बोलिए।`,
@@ -50,6 +64,13 @@ const PH = {
     left: (n: number, labels: string) => `${n} जानकारी अभी बाकी है: ${labels}। आप स्क्रीन पर जवाब दे सकते हैं।`,
     allDone: 'सब भर गया। अब जाँच के लिए रिव्यू खोला जा रहा है।',
     notHeard: 'आवाज़ रोकी गई। जारी रखने के लिए Fill by voice दबाइए।',
+    conflicts: (n: number) => `${n} जानकारी के दस्तावेज़ों में दो अलग मान हैं। स्क्रीन पर सही वाला चुनिए, फिर आगे बोलिए।`,
+    review: (n: number, check: string[]) =>
+      `सारी ${n} जानकारी भर गई है।${check.length ? ` स्क्रीन पर इन्हें जाँच लीजिए: ${check.join(', ')}।` : ''} हर जानकारी सुनने के लिए पढ़ो बोलिए, सब सही हो तो मंज़ूर बोलिए, या ख़ुद जाँचने के लिए रुको बोलिए।`,
+    afterRead: 'सब सही हो तो मंज़ूर बोलिए, या कुछ बदलना हो तो रुको बोलिए।',
+    notReady: 'आवेदन अभी मंज़ूरी के लिए तैयार नहीं है। कृपया स्क्रीन देखिए।',
+    approved: 'मंज़ूर हो गया। भरा हुआ आवेदन PDF में सेव करने के लिए डाउनलोड बोलिए।',
+    downloaded: (where: string) => `आपका आवेदन डाउनलोड हो गया। अभी कहीं जमा नहीं हुआ है। इसे अपने मूल दस्तावेज़ों के साथ ${where} पर ले जाइए।`,
   },
 };
 
@@ -60,9 +81,10 @@ const shortName = (label: string) => label.split(/\s*[/(]/)[0].trim();
  * Hands-free documents: after the spoken questions, asks for each document that would fill
  * the remaining details and opens the camera when the person says "scan"; then the photo.
  */
-export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraft, hasPhoto, onSession, refreshDraft, onAnswerInstead, onAllDone }) => {
+export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getDraft, hasPhoto, onSession, refreshDraft, onAnswerInstead, onShowStep, onApprove, onDownload }) => {
   const voice = useVoiceTurns(speechLocale);
-  const p = hindi ? PH.hi : PH.en;
+  const p = language === 'hi' ? PH.hi : PH.en;
+  const say = async (text: string) => voice.say(await spokenIn(language, text));
   const [scanner, setScanner] = useState<null | { kind?: DocKind; doc: string; photo?: boolean }>(null);
   const [status, setStatus] = useState<string | null>(null);
   const alive = useRef(true);
@@ -76,7 +98,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraf
 
   const end = (message?: string) => {
     setStatus(null);
-    if (message) voice.say(message);
+    if (message) say(message);
   };
 
   /** Ask for the next document, then the photo, then hand over to review. */
@@ -93,7 +115,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraf
       const heard = await ask(p.doc(doc, labels.slice(0, 4).join(', ')));
       if (heard === null) return;
       if (VOICE_COMMANDS.scan.test(heard) || VOICE_COMMANDS.capture.test(heard)) return setScanner({ kind: kindOf(docLabel), doc });
-      if (/answer|jawab|जवाब|bata|बता|myself|khud|ख़ुद|खुद/i.test(heard)) {
+      if (VOICE_COMMANDS.answer.test(heard)) {
         setStatus(null);
         return onAnswerInstead();
       }
@@ -126,22 +148,64 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraf
       setStatus('Asking for your photo');
       const heard = await ask(p.photo);
       if (heard === null) return;
-      if (/photo|foto|फ़ोटो|फोटो|camera|कैमरा|capture|scan/i.test(heard)) return setScanner({ doc: 'photo', photo: true });
+      if (VOICE_COMMANDS.photo.test(heard) || VOICE_COMMANDS.scan.test(heard) || VOICE_COMMANDS.capture.test(heard)) return setScanner({ doc: 'photo', photo: true });
       return end(VOICE_COMMANDS.stop.test(heard) ? undefined : p.notHeard);
     }
 
     if (draft.missing.length) {
       return end(p.left(draft.missing.length, draft.missing.slice(0, 3).map((f) => f.label.toLowerCase()).join(', ')));
     }
+    if (draft.conflicts.length) {
+      setStatus('Waiting for you to choose the right values');
+      const heard = await ask(p.conflicts(draft.conflicts.length));
+      if (heard && !VOICE_COMMANDS.stop.test(heard)) return next((await refreshDraft()) || draft);
+      return end();
+    }
+    await review(draft);
+  };
+
+  /** Review, approval and download — all by voice, with the details on screen. */
+  const review = async (draft: DraftView) => {
+    onShowStep(3);
+    setStatus('Reviewing your application');
+    let prompt = p.review(draft.fields.filter((f) => f.value).length, draft.needsReview.map((f) => f.label.toLowerCase()));
+    for (let turn = 0; turn < 4 && alive.current; turn++) {
+      const heard = await ask(prompt);
+      if (heard === null) return;
+      if (!heard || VOICE_COMMANDS.stop.test(heard)) return end(heard ? undefined : p.notHeard);
+      if (VOICE_COMMANDS.read.test(heard)) {
+        // Labels in the chosen language; the values themselves are read as written
+        const filled = draft.fields.filter((f) => f.value);
+        const labels = (await spokenIn(language, filled.map((f) => f.label).join(' | '))).split(/\s*\|\s*/);
+        const all = filled.map((f, i) => `${labels.length === filled.length ? labels[i] : f.label}: ${f.value}`).join('. ');
+        if (!(await voice.say(all))) return;
+        prompt = p.afterRead;
+        continue;
+      }
+      if ((VOICE_COMMANDS.approve.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) {
+        if (!(await onApprove())) return end(p.notReady);
+        onShowStep(4);
+        const again = await ask(p.approved);
+        if (again && (VOICE_COMMANDS.download.test(again) || VOICE_COMMANDS.yes.test(again))) {
+          setStatus('Preparing your PDF…');
+          try {
+            await onDownload();
+            return end(p.downloaded(draft.scheme?.submission?.where || 'the office or portal'));
+          } catch (err: any) {
+            return end(err?.message || p.failed);
+          }
+        }
+        return end();
+      }
+      prompt = p.afterRead;
+    }
     end();
-    await voice.say(p.allDone);
-    if (alive.current) onAllDone();
   };
 
   /** Speak, then listen; asks twice. '' if nothing was heard, null if voice was stopped. */
   const ask = async (prompt: string): Promise<string | null> => {
     for (let tries = 0; tries < 2; tries++) {
-      if (!(await voice.say(prompt))) return null;
+      if (!(await say(prompt))) return null;
       const heard = await voice.listen(9000);
       if (heard === null) return null;
       if (heard) return heard;
@@ -171,21 +235,21 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraf
         if (failed) {
           setStatus(null);
           const heard = await ask(p.photoBad(failed.label.toLowerCase()));
-          if (heard && /photo|foto|फ़ोटो|फोटो|camera|capture/i.test(heard)) setScanner({ doc: 'photo', photo: true });
+          if (heard && (VOICE_COMMANDS.photo.test(heard) || VOICE_COMMANDS.capture.test(heard) || VOICE_COMMANDS.scan.test(heard))) setScanner({ doc: 'photo', photo: true });
           return;
         }
-        await voice.say(p.photoOk);
+        await say(p.photoOk);
       } else {
         setStatus(`Reading your ${target.doc}…`);
-        voice.say(p.reading(target.doc));
+        say(p.reading(target.doc));
         const res = await autofillApi.uploadDocument(files, target.kind);
         onSession(res);
         const filled = res.document.fields.filter((f) => f.merged).length;
-        await voice.say(p.filled(filled, target.doc));
+        await say(p.filled(filled, target.doc));
       }
     } catch (err: any) {
       setStatus(null);
-      await voice.say(err?.message || p.failed);
+      await say(err?.message || p.failed);
     }
     const fresh = await refreshDraft();
     if (alive.current) next(fresh);
@@ -217,6 +281,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, hindi, getDraf
           title={scanner.photo ? 'Your photo' : `Scan your ${scanner.doc}`}
           voicePrompt={scanner.photo ? p.pose : p.hold(scanner.doc)}
           speechLocale={speechLocale}
+          language={language}
           onClose={() => {
             setScanner(null);
             setStatus(null);

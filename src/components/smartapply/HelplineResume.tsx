@@ -34,7 +34,7 @@ export const HelplineResume: React.FC<{ language: LanguageCode; langConfig: Lang
       setView(await autofillApi.helpline.draft(token));
       setPin('');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message === 'pin_required' ? 'This application was started on another device — enter the PIN you set on its Download step.' : err.message);
     } finally {
       setBusy(false);
     }
@@ -91,7 +91,7 @@ export const HelplineResume: React.FC<{ language: LanguageCode; langConfig: Lang
       <h2 id="hl-login-h" className="flex items-center gap-2 text-lg font-extrabold text-white">
         <PhoneCall className="h-5 w-5 text-teal" aria-hidden /> Continue a Smart Apply application
       </h2>
-      <p className="mt-1 text-sm text-slate-300">Enter your application reference and the PIN you set in Smart Apply.</p>
+      <p className="mt-1 text-sm text-slate-300">Enter your application reference (shown at the top of the application). A PIN is only needed on a different device.</p>
       <form onSubmit={login} className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto]">
         <div className="space-y-3">
           <label className="block text-sm font-semibold text-slate-200">
@@ -105,7 +105,7 @@ export const HelplineResume: React.FC<{ language: LanguageCode; langConfig: Lang
             />
           </label>
           <label className="block text-sm font-semibold text-slate-200">
-            PIN
+            PIN <span className="font-normal text-slate-400">(other devices only)</span>
             <input
               value={pin}
               type="password"
@@ -117,7 +117,7 @@ export const HelplineResume: React.FC<{ language: LanguageCode; langConfig: Lang
             />
           </label>
           {error && <p className="text-sm font-semibold text-saffron" role="alert">{error}</p>}
-          <button disabled={busy || reference.length < 10 || pin.length < 4} className="btn btn-accent btn-lg w-full">
+          <button disabled={busy || reference.length < 12 || (pin.length > 0 && pin.length < 4)} className="btn btn-accent btn-lg w-full">
             <KeyRound className="h-5 w-5" aria-hidden /> Continue
           </button>
         </div>

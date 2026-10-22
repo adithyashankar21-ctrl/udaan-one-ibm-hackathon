@@ -403,7 +403,7 @@ export const DocumentStep: React.FC<Props> = ({ t, draft, documents, photo, prev
                   {selectedDoc.extraFields.map((x) => (
                     <div key={x.label} className="flex gap-2">
                       <dt className="font-semibold text-muted">{x.label}:</dt>
-                      <dd className="text-navy">{x.value}</dd>
+                      <dd translate="no" className="text-navy">{x.value}</dd>
                     </div>
                   ))}
                 </dl>

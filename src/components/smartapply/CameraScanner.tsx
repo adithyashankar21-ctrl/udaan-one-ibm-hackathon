@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AudioLines, Camera, Check, RotateCw, Trash2, X } from 'lucide-react';
 import type { UploadFile } from '../../services/autofillApi';
 import { VOICE_COMMANDS, canvasToUpload, useVoiceTurns } from './media';
+import { spokenIn } from '../../services/translate';
+import type { LanguageCode } from '../../types';
 
 interface Page {
   id: number;
@@ -19,12 +21,14 @@ interface Props {
   /** Spoken guidance; when set together with speechLocale, "capture" and "done" work by voice. */
   voicePrompt?: string;
   speechLocale?: string;
+  /** Language of the spoken guidance (English prompts are translated into it). */
+  language?: LanguageCode;
   /** Finish automatically after this many pictures (1 for a photo). */
   maxPages?: number;
 }
 
 /** Multi-page document scanner using the device camera. Falls back to the phone's camera app. */
-export const CameraScanner: React.FC<Props> = ({ onDone, onClose, facing = 'environment', title = 'Scan document', voicePrompt, speechLocale, maxPages }) => {
+export const CameraScanner: React.FC<Props> = ({ onDone, onClose, facing = 'environment', title = 'Scan document', voicePrompt, speechLocale, language = 'en', maxPages }) => {
   const voice = useVoiceTurns(speechLocale || 'en-IN');
   const voiceOn = Boolean(voicePrompt && speechLocale && voice.supported);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,7 +104,7 @@ export const CameraScanner: React.FC<Props> = ({ onDone, onClose, facing = 'envi
     (async () => {
       let prompt = voicePrompt!;
       while (alive) {
-        if (prompt && !(await voice.say(prompt))) return;
+        if (prompt && !(await voice.say(await spokenIn(language, prompt)))) return;
         prompt = '';
         const heard = await voice.listen(15000);
         if (heard === null || !alive) return;

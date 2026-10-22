@@ -1,6 +1,8 @@
 import { BeneficiaryProfile, ChatMessage, LivelihoodAnalysis } from '../types';
 import { announceApplyIntent } from './autofillApi';
 import { announceLearnIntent } from './learnApi';
+import { SUPPORTED_LANGUAGES } from '../data/languages';
+import { LANGUAGE_NAMES, offlineReply, scriptLanguage, toLanguageCode } from '../data/languageTools';
 
 let currentAudio: HTMLAudioElement | null = null;
 let cachedVoices: SpeechSynthesisVoice[] = [];
@@ -57,20 +59,9 @@ function getVoiceForLanguageOrText(locale: string = 'en-IN', text: string = '', 
   }
   const voices = customVoices && customVoices.length > 0 ? customVoices : (cachedVoices.length > 0 ? cachedVoices : window.speechSynthesis.getVoices());
 
-  // Detect script from text
-  const isTamil = /[\u0B80-\u0BFF]/.test(text) || locale.startsWith('ta');
-  const isTelugu = /[\u0C00-\u0C7F]/.test(text) || locale.startsWith('te');
-  const isKannada = /[\u0C80-\u0CFF]/.test(text) || locale.startsWith('kn');
-  const isMalayalam = /[\u0D00-\u0D7F]/.test(text) || locale.startsWith('ml');
-  const isHindi = /[\u0900-\u097F]/.test(text) || locale.startsWith('hi');
-
-  let targetPrefix = 'en';
-  let targetLocale = 'en-IN';
-  if (isTamil) { targetPrefix = 'ta'; targetLocale = 'ta-IN'; }
-  else if (isTelugu) { targetPrefix = 'te'; targetLocale = 'te-IN'; }
-  else if (isKannada) { targetPrefix = 'kn'; targetLocale = 'kn-IN'; }
-  else if (isMalayalam) { targetPrefix = 'ml'; targetLocale = 'ml-IN'; }
-  else if (isHindi) { targetPrefix = 'hi'; targetLocale = 'hi-IN'; }
+  // The language follows the text's script, else the requested locale
+  const targetPrefix = scriptLanguage(text, toLanguageCode(locale));
+  const targetLocale = targetPrefix === 'en' ? 'en-IN' : SUPPORTED_LANGUAGES.find((l) => l.code === targetPrefix)?.speechLocale || locale;
 
   if (!voices || voices.length === 0) {
     return { voice: null, targetLocale };
@@ -88,7 +79,8 @@ function getVoiceForLanguageOrText(locale: string = 'en-IN', text: string = '', 
         (targetPrefix === 'hi' && (vName.includes('hindi') || vName.includes('swara') || vName.includes('madhur') || vName.includes('kalpana'))) ||
         (targetPrefix === 'te' && (vName.includes('telugu') || vName.includes('mohan') || vName.includes('chitra'))) ||
         (targetPrefix === 'kn' && (vName.includes('kannada') || vName.includes('gagan') || vName.includes('sapna'))) ||
-        (targetPrefix === 'ml' && (vName.includes('malayalam') || vName.includes('sobhana') || vName.includes('midhun')))
+        (targetPrefix === 'ml' && (vName.includes('malayalam') || vName.includes('sobhana') || vName.includes('midhun'))) ||
+        vName.includes(LANGUAGE_NAMES[targetPrefix].toLowerCase())
       );
     });
 
@@ -252,9 +244,19 @@ function playAudioData(data: { audioBase64: string; mimeType: string }): Promise
   return new Promise<void>((resolve) => {
     const audio = new Audio(`data:${data.mimeType};base64,${data.audioBase64}`);
     currentAudio = audio;
+    let guard: ReturnType<typeof setTimeout> | undefined;
     const done = () => {
+      clearTimeout(guard);
       if (currentAudio === audio) currentAudio = null;
       resolve();
+    };
+    // Never let a stalled clip leave the conversation stuck in "speaking": give up if it does not
+    // start within 6 s, or runs well past its own length
+    guard = setTimeout(done, 6000);
+    audio.onplaying = () => {
+      clearTimeout(guard);
+      const length = isFinite(audio.duration) ? audio.duration : 30;
+      guard = setTimeout(done, (length - audio.currentTime) * 1000 + 2500);
     };
     audio.onended = done;
     audio.onerror = done;
@@ -291,25 +293,31 @@ async function speakWithBrowserVoice(text: string, locale: string): Promise<void
   });
 }
 
-const OFFLINE_REPLIES: Record<string, string> = {
-  ta: 'மன்னிக்கவும், இப்போது AI சேவையுடன் இணைக்க முடியவில்லை. சிறிது நேரத்தில் மீண்டும் முயற்சிக்கவும். அதுவரை "திட்டங்கள்" பக்கத்தில் அதிகாரப்பூர்வ இணைப்புகளுடன் திட்டங்களைப் பார்க்கலாம், அல்லது 1800-11-2529 என்ற இலவச உதவி எண்ணை அழைக்கலாம்.',
-  hi: 'माफ़ कीजिए, अभी AI सेवा से जुड़ नहीं पा रहा हूँ। कृपया थोड़ी देर बाद फिर कोशिश करें। तब तक "योजनाएँ खोजें" में आधिकारिक लिंक के साथ योजनाएँ देख सकते हैं, या टोल-फ्री नंबर 1800-11-2529 पर कॉल कर सकते हैं।',
-  te: 'క్షమించండి, ఇప్పుడు AI సేవకు కనెక్ట్ కాలేకపోతున్నాను. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించండి. అప్పటివరకు "పథకాలు" పేజీలో అధికారిక లింకులతో పథకాలు చూడవచ్చు, లేదా 1800-11-2529 టోల్-ఫ్రీ నంబర్‌కు కాల్ చేయవచ్చు.',
-  kn: 'ಕ್ಷಮಿಸಿ, ಈಗ AI ಸೇವೆಗೆ ಸಂಪರ್ಕಿಸಲು ಆಗುತ್ತಿಲ್ಲ. ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ. ಅಲ್ಲಿಯವರೆಗೆ "ಯೋಜನೆಗಳು" ಪುಟದಲ್ಲಿ ಅಧಿಕೃತ ಲಿಂಕ್‌ಗಳೊಂದಿಗೆ ಯೋಜನೆಗಳನ್ನು ನೋಡಬಹುದು, ಅಥವಾ 1800-11-2529 ಗೆ ಕರೆ ಮಾಡಬಹುದು.',
-  ml: 'ക്ഷമിക്കണം, ഇപ്പോൾ AI സേവനവുമായി ബന്ധിപ്പിക്കാൻ കഴിയുന്നില്ല. അൽപ്പസമയം കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കൂ. അതുവരെ "പദ്ധതികൾ" പേജിൽ ഔദ്യോഗിക ലിങ്കുകളോടെ പദ്ധതികൾ കാണാം, അല്ലെങ്കിൽ 1800-11-2529 എന്ന ടോൾ ഫ്രീ നമ്പറിൽ വിളിക്കാം.',
-  en: 'Sorry, I could not reach the AI service just now. Please try again in a moment. Meanwhile, you can browse schemes with official links under "Find Schemes", or call the toll-free helpline 1800-11-2529.',
-};
+export { offlineReply };
 
-export function offlineReply(language: string, lastUserMsg: string): string {
-  const l = (language || '').toLowerCase();
-  const code =
-    /[\u0B80-\u0BFF]/.test(lastUserMsg) || l.includes('tamil') || l === 'ta' ? 'ta'
-    : /[\u0C00-\u0C7F]/.test(lastUserMsg) || l.includes('telugu') || l === 'te' ? 'te'
-    : /[\u0C80-\u0CFF]/.test(lastUserMsg) || l.includes('kannada') || l === 'kn' ? 'kn'
-    : /[\u0D00-\u0D7F]/.test(lastUserMsg) || l.includes('malayalam') || l === 'ml' ? 'ml'
-    : /[\u0900-\u097F]/.test(lastUserMsg) || l.includes('hindi') || l === 'hi' ? 'hi'
-    : 'en';
-  return OFFLINE_REPLIES[code];
+/** Whether this device has its own voice for the language of `locale`. */
+export function hasDeviceVoice(locale: string): boolean {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+  if (toLanguageCode(locale) === 'en') return true;
+  return Boolean(getVoiceForLanguageOrText(locale, '', window.speechSynthesis.getVoices()).voice);
+}
+
+/**
+ * Speak with the server's backup voice (no Gemini quota), for languages this device has no
+ * voice for. Resolves false if it could not be played, so the caller can fall back.
+ */
+export async function speakWithBackupVoice(text: string, locale: string): Promise<boolean> {
+  const pieces = splitForSpeech(prepareTextForSpeech(text), 160, 220);
+  const session = speechSession;
+  const pending = pieces.map((p) => fetchStudioAudio(p, locale, getStudioVoiceName(locale), 'google'));
+  for (const next of pending) {
+    const audio = await next;
+    if (session !== speechSession) return true;
+    if (!audio) return false;
+    await playAudioData(audio);
+    if (session !== speechSession) return true;
+  }
+  return true;
 }
 
 /** Whether the most recent chat reply came from the offline fallback (so the UI can offer a retry). */
@@ -426,6 +434,44 @@ export const aiService = {
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+    }
+  },
+
+  /**
+   * Resolves when the reply now being spoken has finished: waits up to 5 s for speech to
+   * start (voices load first), then until it has been quiet for a moment, at most `maxMs`.
+   */
+  whenSilent(maxMs = 30000): Promise<void> {
+    const speaking = () => Boolean((currentAudio && !currentAudio.paused) || (typeof window !== 'undefined' && window.speechSynthesis?.speaking));
+    return new Promise((resolve) => {
+      const start = Date.now();
+      let started = false;
+      let quietSince = start;
+      const tick = () => {
+        const now = Date.now();
+        if (speaking()) {
+          started = true;
+          quietSince = now;
+        }
+        if ((started && now - quietSince > 700) || (!started && now - start > 5000) || now - start > maxMs) return resolve();
+        setTimeout(tick, 150);
+      };
+      tick();
+    });
+  },
+
+  /**
+   * Short prompts (form questions, "Saved") in the device's own voice: starts instantly and
+   * uses no API quota, so a back-and-forth of many short turns never lags.
+   */
+  async speakQuick(text: string, locale: string = 'en-IN'): Promise<void> {
+    this.stopAudio();
+    const session = speechSession;
+    // No device voice for this language: the backup voice, rather than English-sounding speech
+    if (!hasDeviceVoice(locale) && (await speakWithBackupVoice(text, locale))) return;
+    for (const piece of splitForSpeech(prepareTextForSpeech(text))) {
+      if (session !== speechSession) return;
+      await speakWithBrowserVoice(piece, locale);
     }
   },
 

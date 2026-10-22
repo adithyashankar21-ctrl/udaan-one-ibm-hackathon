@@ -3,6 +3,7 @@
  * These checks only test the shape of a value — they cannot confirm it is genuine.
  */
 import type { FieldType } from '../../src/data/autofillSchema';
+import { toAsciiDigits } from '../../src/data/languageTools';
 
 /* Verhoeff checksum used by Aadhaar numbers */
 const D = [
@@ -69,8 +70,7 @@ const NUMBER_WORDS: Record<string, number> = {
  * English, and a lone number word ("five", "paanch", "पांच") to its digits.
  */
 export function spokenToPlain(raw: string, numberWords = false): string {
-  let s = raw.replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 0x966)).replace(/[௦-௯]/g, (d) => String(d.charCodeAt(0) - 0xbe6));
-  s = s.replace(/[౦-౯]/g, (d) => String(d.charCodeAt(0) - 0xc66)).replace(/[೦-೯]/g, (d) => String(d.charCodeAt(0) - 0xce6)).replace(/[൦-൯]/g, (d) => String(d.charCodeAt(0) - 0xd66));
+  let s = toAsciiDigits(raw);
   for (const [re, m] of HINDI_MONTHS) s = s.replace(re, m);
   if (numberWords && !/\d/.test(s)) {
     const words = s.toLowerCase().replace(/[.,!?।]/g, ' ').split(/[\s-]+/).filter(Boolean);
@@ -87,8 +87,9 @@ export function spokenToPlain(raw: string, numberWords = false): string {
   return s;
 }
 
-const YES = /^(yes|yeah|yep|yup|ya|haan|han|ha|haa|hanji|ji haan|ji|sahi|bilkul|correct|हाँ|हां|हा|जी|जी हाँ|ठीक|बिल्कुल|ஆம்|ஆமா|అవును|ಹೌದು|അതെ)(\b|\s|,|$)/i;
-const NO = /^(no|nope|nah|nahi|nahin|nai|na|nil|none|never|bilkul nahi|नहीं|नही|ना|जी नहीं|இல்லை|లేదు|ಇಲ್ಲ|ഇല്ല)(\b|\s|,|$)/i;
+// Yes / no in every supported language: en, hi, mr, ta, te, kn, ml, bn, gu, pa, or, ur
+const YES = /^(yes|yeah|yep|yup|ya|haan|han|ha|haa|hanji|ji haan|ji|sahi|bilkul|correct|हाँ|हां|हा|जी|जी हाँ|ठीक|बिल्कुल|होय|हो|ஆம்|ஆமா|ஆமாம்|అవును|ಹೌದು|അതെ|ഉവ്വ്|হ্যাঁ|হাঁ|হ্যা|হুঁ|હા|હાજી|ਹਾਂ|ਹਾਂਜੀ|ਜੀ|ହଁ|ହଁ|ହାଁ|ہاں|جی|جی ہاں)(\b|\s|,|۔|$)/i;
+const NO = /^(no|nope|nah|nahi|nahin|nai|na|nil|none|never|bilkul nahi|नहीं|नही|ना|जी नहीं|नाही|இல்லை|வேண்டாம்|లేదు|వద్దు|ಇಲ್ಲ|ಬೇಡ|ഇല്ല|വേണ്ട|না|নেই|ના|નહીં|નથી|ਨਹੀਂ|ਨਾ|ନା|ନାହିଁ|نہیں|نا|جی نہیں)(\b|\s|,|۔|$)/i;
 
 /** Parse many date spellings into DD/MM/YYYY, or null. */
 export function normaliseDate(raw: string): string | null {
@@ -214,7 +215,7 @@ export function normalise(type: FieldType, raw: string, options?: string[]): Nor
       const no = isNone(text) || NO.test(text) || /\b(nahi|nahin|nai|not)\b|नहीं|नही/i.test(text);
       const yes = !no && YES.test(text);
       // Words of 4+ letters that identify an option ("tailor" → "Tailor (Darzi)")
-      const words = (o: string) => o.toLowerCase().split(/[^a-z\u0900-\u0d7f]+/).filter((w) => w.length >= 4);
+      const words = (o: string) => o.toLowerCase().split(/[^a-z\u0900-\u0d7f\u0600-\u06ff]+/).filter((w) => w.length >= 4);
       const hit =
         opts.find((o) => o.toLowerCase() === lower) ||
         opts.find((o) => lower.includes(o.toLowerCase().split(/[\s(/]/)[0])) ||

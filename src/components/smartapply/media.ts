@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UploadFile } from '../../services/autofillApi';
 import { pickVoice } from '../learning/useSpeaker';
+import { aiService, speakWithBackupVoice } from '../../services/aiService';
 
 const MAX_SIDE = 2200;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -135,6 +136,7 @@ export function useVoiceTurns(locale: string) {
   const cancel = useCallback(() => {
     run.current++;
     if (canSpeak) window.speechSynthesis.cancel();
+    aiService.stopAudio();
     try {
       recRef.current?.abort();
     } catch {}
@@ -149,8 +151,22 @@ export function useVoiceTurns(locale: string) {
         const mine = ++run.current;
         if (!canSpeak || !text) return resolve(true);
         window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
         const voice = pickVoice(locale);
+        // No device voice for this language: use the backup voice instead of an English one
+        if (!voice && !locale.startsWith('en')) {
+          setPhase('speaking');
+          speakWithBackupVoice(text, locale).then((ok) => {
+            if (ok || run.current !== mine) {
+              if (run.current === mine) setPhase('idle');
+              return resolve(run.current === mine);
+            }
+            speakDevice();
+          });
+          return;
+        }
+        speakDevice();
+        function speakDevice() {
+        const u = new SpeechSynthesisUtterance(text);
         u.lang = voice?.lang || locale;
         if (voice) u.voice = voice;
         u.rate = 1.05;
@@ -164,6 +180,7 @@ export function useVoiceTurns(locale: string) {
         window.speechSynthesis.speak(u);
         // Some browsers never fire onend for long text; do not hang the conversation
         setTimeout(done, 1500 + text.length * 90);
+        }
       }),
     [canSpeak, locale]
   );
@@ -224,12 +241,42 @@ export function useVoiceTurns(locale: string) {
 
 /** Words that control a voice conversation, in English, Hinglish and Hindi. */
 // \b does not work next to Indian scripts, so word edges are spaces or punctuation
-const words = (list: string, anchored = false) => new RegExp(`${anchored ? '^' : '(?:^|[\\s,.!?।])'}(?:${list})(?=$|[\\s,.!?।])`, 'i');
+const words = (list: string, anchored = false) => new RegExp(`${anchored ? '^' : '(?:^|[\\s,.!?।۔،؟])'}(?:${list})(?=$|[\\s,.!?।۔،؟])`, 'i');
+/**
+ * Spoken commands in every supported language (English words too: people often say "scan" or
+ * "done" in English whatever language they speak). Order: en/Hinglish, hi, mr, ta, te, kn, ml,
+ * bn, gu, pa, or, ur.
+ */
+const VOCAB = {
+  stop: 'stop|exit|cancel|band karo|bas|ruko|रुको|बंद करो|बस|थांबा|थांब|நிறுத்து|நிறுத்துங்கள்|போதும்|ఆపు|ఆపండి|చాలు|ನಿಲ್ಲಿಸು|ನಿಲ್ಲಿಸಿ|ಸಾಕು|നിർത്തൂ|നിർത്തുക|മതി|থামো|থামুন|বন্ধ করো|বন্ধ|બંધ કરો|બંધ|રોકો|બસ|ਰੁਕੋ|ਬੰਦ ਕਰੋ|ਬੱਸ|ବନ୍ଦ କର|ବନ୍ଦ|ରୁହ|ରୁକ|رکو|بس|بند کرو',
+  skip: 'skip|next|chhodo|chodo|aage|बाद में|छोड़ो|छोड़ दो|अगला|पुढे|सोडा|वगळा|அடுத்து|அடுத்தது|தவிர்|విడిచిపెట్టు|తర్వాత|తరువాత|వదిలేయి|ಮುಂದೆ|ಬಿಡು|ಮುಂದಿನದು|അടുത്തത്|ഒഴിവാക്കൂ|বাদ দাও|বাদ দিন|পরের|પછી|છોડો|આગળ|ਛੱਡੋ|ਅੱਗੇ|ଛାଡ|ଆଗକୁ|ପରବର୍ତ୍ତୀ|چھوڑو|آگے|اگلا',
+  repeat: 'repeat|again|dobara|phir se|what|दोबारा|फिर से|पुन्हा|परत|மீண்டும்|திரும்ப|మళ్ళీ|మళ్లీ|ಮತ್ತೆ|ಇನ್ನೊಮ್ಮೆ|വീണ്ടും|আবার|ফের|ફરીથી|ફરી|ਦੁਬਾਰਾ|ਫਿਰ ਤੋਂ|ପୁଣି|ଆଉଥରେ|دوبارہ|پھر سے',
+  scan: 'scan|camera|upload|document|kagaz|kaagaz|स्कैन|कैमरा|दस्तावेज़|दस्तावेज|स्कॅन|कॅमेरा|ஸ்கேன்|கேமரா|స్కాన్|కెమెరా|ಸ್ಕ್ಯಾನ್|ಕ್ಯಾಮೆರಾ|സ്കാൻ|ക്യാമറ|স্ক্যান|ক্যামেরা|સ્કેન|કેમેરા|ਸਕੈਨ|ਕੈਮਰਾ|ସ୍କାନ|କ୍ୟାମେରା|اسکین|کیمرہ|کیمرا',
+  capture: 'capture|click|take|photo lo|khicho|kheencho|खींचो|कैप्चर|क्लिक|काढा|कॅप्चर|கேப்சர்|எடு|క్యాప్చర్|తీయి|ಕ್ಯಾಪ್ಚರ್|ತೆಗೆ|ക്യാപ്ചർ|എടുക്കൂ|ক্যাপচার|তোলো|કેપ્ચર|લો|ਕੈਪਚਰ|ਖਿੱਚੋ|କ୍ୟାପଚର|ଉଠାଅ|کیپچر|کھینچو',
+  done: 'done|finish|ho gaya|hogaya|हो गया|पूरा|झाले|झालं|पूर्ण|முடிந்தது|ஆச்சு|அயிந்தது|అయిపోయింది|అయింది|పూర్తి|ಆಯಿತು|ಮುಗಿಯಿತು|കഴിഞ്ഞു|തീർന്നു|হয়ে গেছে|শেষ|થઈ ગયું|પૂરું|ਹੋ ਗਿਆ|ਪੂਰਾ|ହୋଇଗଲା|ସରିଲା|ہو گیا|مکمل',
+  answer: 'answer|jawab|bata|myself|khud|जवाब|बता|ख़ुद|खुद|उत्तर|सांगतो|சொல்கிறேன்|பதில்|చెప్తాను|జవాబు|ಹೇಳುತ್ತೇನೆ|ಉತ್ತರ|പറയാം|ഉത്തരം|উত্তর|বলব|જવાબ|કહીશ|ਜਵਾਬ|ਦੱਸਾਂਗਾ|ଉତ୍ତର|କହିବି|جواب|بتاؤں',
+  photo: 'photo|foto|selfie|फ़ोटो|फोटो|ஃபோட்டோ|புகைப்படம்|ఫోటో|ಫೋಟೋ|ഫോട്ടോ|ফটো|ছবি|ફોટો|ਫੋਟੋ|ଫଟୋ|فوٹو|تصویر',
+  read: 'read|padh|padho|suna|sunao|पढ़|सुना|वाचा|ऐकवा|படி|படிக்கவும்|சொல்லுங்கள்|చదువు|చదవండి|ಓದು|ಓದಿ|വായിക്കൂ|পড়ো|পড়ুন|વાંચો|ਪੜ੍ਹੋ|ପଢ|پڑھو|سناؤ',
+  approve: 'approve|correct|sahi|theek|thik|manzoor|मंज़ूर|मंजूर|सही|ठीक|बरोबर|मान्य|ஒப்புதல்|சரி|ఆమోదం|సరి|సరే|ಅನುಮೋದನೆ|ಸರಿ|അംഗീകരിക്കൂ|ശരി|অনুমোদন|ঠিক আছে|ঠিক|મંજૂર|બરાબર|ਮਨਜ਼ੂਰ|ਠੀਕ|ଅନୁମୋଦନ|ଠିକ|منظور|صحیح|ٹھیک',
+  download: 'download|save|डाउनलोड|सेव|डाउनलोड करा|டவுன்லோட்|பதிவிறக்கு|డౌన్‌లోడ్|ಡೌನ್‌ಲೋಡ್|ഡൗൺലോഡ്|ডাউনলোড|ડાઉનલોડ|ਡਾਊਨਲੋਡ|ଡାଉନଲୋଡ|ڈاؤن لوڈ',
+  agree: 'agree|i agree|sahmat|सहमत|मान्य|ஒப்புக்கொள்கிறேன்|சம்மதம்|అంగీకరిస్తున్నాను|ಒಪ್ಪುತ್ತೇನೆ|സമ്മതം|রাজি|সম্মত|સંમત|ਸਹਿਮਤ|ରାଜି|ସହମତ|متفق|راضی',
+  yes: 'yes|yeah|yep|ok|okay|haan|han|ha|hanji|ji|हाँ|हां|हा|जी|होय|हो|ஆம்|ஆமா|சரி|అవును|ಹೌದು|അതെ|ഉവ്വ്|হ্যাঁ|হাঁ|হ্যা|હા|ਹਾਂ|ਹਾਂਜੀ|ହଁ|ହଁ|ہاں|جی',
+  no: 'no|nope|nahi|nahin|not|नहीं|नही|ना|नाही|இல்லை|வேண்டாம்|లేదు|వద్దు|ಇಲ್ಲ|ಬೇಡ|ഇല്ല|വേണ്ട|না|নেই|ના|નહીં|ਨਹੀਂ|ନା|ନାହିଁ|نہیں|نا',
+};
+
 export const VOICE_COMMANDS = {
-  stop: words('stop|band karo|bas|ruko|रुको|बंद करो|बस', true),
-  skip: words('skip|next|chhodo|chodo|aage|बाद में|छोड़ो|छोड़ दो|अगला', true),
-  repeat: words('repeat|again|dobara|phir se|दोबारा|फिर से|what', true),
-  scan: words('scan|camera|upload|document|kagaz|kaagaz|स्कैन|कैमरा|दस्तावेज़|दस्तावेज'),
-  capture: words('capture|click|take|photo lo|khicho|kheencho|खींचो|कैप्चर|क्लिक'),
-  done: words('done|finish|ho gaya|hogaya|हो गया|पूरा'),
+  stop: words(VOCAB.stop, true),
+  skip: words(VOCAB.skip, true),
+  repeat: words(VOCAB.repeat, true),
+  scan: words(VOCAB.scan),
+  capture: words(VOCAB.capture),
+  done: words(VOCAB.done),
+  answer: words(VOCAB.answer),
+  photo: words(VOCAB.photo),
+  read: words(VOCAB.read),
+  approve: words(VOCAB.approve),
+  download: words(VOCAB.download),
+  agree: words(VOCAB.agree),
+  yes: words(VOCAB.yes),
+  no: words(VOCAB.no),
 };

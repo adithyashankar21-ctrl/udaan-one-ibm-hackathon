@@ -1,3 +1,4 @@
+import { aiService, speakWithBackupVoice } from '../../services/aiService';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -50,6 +51,7 @@ export function useSpeaker(locale: string) {
   const stop = useCallback(() => {
     run.current++;
     if (supported) window.speechSynthesis.cancel();
+    aiService.stopAudio();
     setSpeakingId(null);
   }, [supported]);
 
@@ -61,6 +63,11 @@ export function useSpeaker(locale: string) {
       const voice = pickVoice(locale);
       const queue = chunks(speakable(text));
       setSpeakingId(id);
+      // No device voice for this language: read it with the backup voice instead of an English one
+      if (!voice && !locale.startsWith('en')) {
+        speakWithBackupVoice(queue.join(' '), locale).then(() => run.current === myRun && setSpeakingId(null));
+        return;
+      }
       const next = (i: number) => {
         if (run.current !== myRun) return;
         if (i >= queue.length) return setSpeakingId(null);

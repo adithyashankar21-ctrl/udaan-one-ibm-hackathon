@@ -47,7 +47,7 @@ const FieldRow: React.FC<{ t: SmartApplyStrings; f: FieldView; hi: boolean; draf
             {f.required && <span className="text-coral-600" aria-label="required"> *</span>}
           </p>
           {!editing && (
-            <p className={`mt-0.5 break-words text-base font-bold ${f.value ? 'text-navy' : 'text-muted'}`}>{f.value ? display(f) : '—'}</p>
+            <p translate={f.value ? 'no' : undefined} className={`mt-0.5 break-words text-base font-bold ${f.value ? 'text-navy' : 'text-muted'}`}>{f.value ? display(f) : '—'}</p>
           )}
         </div>
         <FieldStateBadge field={f} />

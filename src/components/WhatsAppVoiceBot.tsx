@@ -462,6 +462,7 @@ export const WhatsAppVoiceBot: React.FC<WhatsAppVoiceBotProps> = ({
             className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
             <div
+              translate={m.sender === 'user' ? 'no' : undefined}
               className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow ${
                 m.sender === 'user'
                   ? 'bg-emerald-700 text-white rounded-tr-none'

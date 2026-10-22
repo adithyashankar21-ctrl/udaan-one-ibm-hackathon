@@ -683,21 +683,29 @@ export function createAutofillRouter(generate: Generate) {
     const reference = String(req.body?.reference || '').trim().toUpperCase();
     const pin = String(req.body?.pin || '');
     if (!pinIpLimit(req.ip || 'ip')) return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+    if (!/^UD-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(reference)) return res.status(400).json({ error: 'That reference is not in the right form. It looks like UD-ABCD-2345.' });
     const fail = pinFailures.get(reference);
     if (fail && fail.until > Date.now()) return res.status(429).json({ error: 'Too many wrong PINs for this reference. Try again in 15 minutes.' });
 
-    const ref = lookupReference(reference);
-    const session = ref ? loadSession(ref.sessionHash) : null;
+    // On the device that owns the application, the session cookie already proves who it is
+    const mine = ctx(req).session;
+    const ownDraft = mine?.consent ? mine.drafts.find((d) => d.reference === reference) : undefined;
+    const ref = ownDraft ? { sessionHash: mine!.hash, draftId: ownDraft.id } : lookupReference(reference);
+    const session = ownDraft ? mine : ref ? loadSession(ref.sessionHash) : null;
     const draft = session?.drafts.find((d) => d.id === ref!.draftId);
-    if (!draft || !draft.pinHash || !verifyPin(pin, draft.pinHash)) {
-      const f = pinFailures.get(reference) || { count: 0, until: 0 };
-      f.count += 1;
-      if (f.count >= 5) {
-        f.until = Date.now() + 15 * 60 * 1000;
-        f.count = 0;
+    const ownDevice = Boolean(ownDraft);
+    if (!draft || (!ownDevice && (!draft.pinHash || !verifyPin(pin, draft.pinHash)))) {
+      // Asking without a PIN reveals nothing (same answer whether the reference exists), so it is not counted
+      if (pin) {
+        const f = pinFailures.get(reference) || { count: 0, until: 0 };
+        f.count += 1;
+        if (f.count >= 5) {
+          f.until = Date.now() + 15 * 60 * 1000;
+          f.count = 0;
+        }
+        pinFailures.set(reference, f);
       }
-      pinFailures.set(reference, f);
-      return res.status(401).json({ error: 'Reference or PIN not recognised.' });
+      return res.status(401).json({ error: pin ? 'Reference or PIN not recognised.' : 'pin_required' });
     }
     pinFailures.delete(reference);
     const token = crypto.randomBytes(24).toString('base64url');

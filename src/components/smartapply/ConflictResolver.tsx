@@ -45,7 +45,7 @@ export const ConflictResolver: React.FC<Props> = ({ t, conflicts, onSession, onR
                   onClick={() => resolve(c, { index: i })}
                   className="rounded-xl border border-line bg-white p-3 text-left hover:border-green hover:bg-green-50"
                 >
-                  <span className="block text-base font-bold text-navy">{cand.value}</span>
+                  <span translate="no" className="block text-base font-bold text-navy">{cand.value}</span>
                   <span className="mt-1 block text-xs text-muted">
                     {cand.sourceLabel}
                     {cand.confidence !== undefined ? ` · ${Math.round(cand.confidence * 100)}%` : ''}

@@ -193,12 +193,12 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
                 aria-label={`${t.language}: ${activeLang.name}`}
               >
                 <Globe2 className="h-4 w-4 text-teal-600" aria-hidden />
-                <span className="hidden sm:inline">{activeLang.nativeName}</span>
+                <span className="hidden sm:inline" translate="no">{activeLang.nativeName}</span>
                 <span className="sm:hidden">{activeLang.code.toUpperCase()}</span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted" aria-hidden />
               </button>
               {langOpen && (
-                <ul role="listbox" aria-label={t.language} className="card absolute right-0 mt-2 max-h-80 w-60 overflow-y-auto p-1.5 animate-fade-up">
+                <ul role="listbox" aria-label={t.language} translate="no" className="card absolute right-0 mt-2 max-h-80 w-60 overflow-y-auto p-1.5 animate-fade-up">
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <li key={lang.code}>
                       <button
@@ -308,7 +308,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">
                 <User className="h-4 w-4" aria-hidden />
               </span>
-              <span className="hidden max-w-[7rem] truncate 2xl:inline">{profileName || t.profile}</span>
+              <span translate={profileName ? "no" : undefined} className="hidden max-w-[7rem] truncate 2xl:inline">{profileName || t.profile}</span>
             </button>
 
             <button onClick={() => setMobileOpen((o) => !o)} className={`${iconBtn} lg:hidden`} aria-expanded={mobileOpen} aria-label="Menu">

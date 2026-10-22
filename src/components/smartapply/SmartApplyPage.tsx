@@ -50,6 +50,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
   // Hands-free filling: spoken questions, then documents and photo by camera
   const [questionVoice, setQuestionVoice] = useState(0);
   const [docVoice, setDocVoice] = useState({ n: 0, afterQuestions: false });
+  const [voiceIntro, setVoiceIntro] = useState('');
   const startDocVoice = (afterQuestions: boolean) => setDocVoice((v) => ({ n: v.n + 1, afterQuestions }));
   const draftRef = useRef<DraftView | null>(null);
   draftRef.current = draft;
@@ -76,6 +77,15 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     applyDraft(res.draft, res.fieldsHash);
   }, [draft]);
 
+  /** Coming from the voice agent: go straight on by voice — questions first, else documents. */
+  const startVoiceFilling = (d: DraftView) => {
+    setVoiceIntro(`${language === 'hi' ? 'आवेदन शुरू हुआ:' : 'Starting your application for'} ${d.scheme?.name?.split(' (')[0] || ''}.`);
+    if (d.missing.some((f) => !f.fillableBy?.length)) {
+      setStep(2);
+      setQuestionVoice((n) => n + 1);
+    } else startDocVoice(false);
+  };
+
   const firstUsefulStep = (d: DraftView) => (d.documents.some((x) => x.required && !x.have && !x.manual) ? 1 : d.missing.length || d.conflicts.length ? 2 : 3);
 
   const start = async (schemeId: string, channel = entryChannel) => {
@@ -91,6 +101,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
       const full = await autofillApi.getDraft(res.draft.id);
       applyDraft(full.draft, full.fieldsHash);
       setStep(firstUsefulStep(full.draft));
+      if (channel === 'voice') startVoiceFilling(full.draft);
       topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err: any) {
       setError(err.message);
@@ -135,6 +146,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         const full = await autofillApi.getDraft(res.draft.id);
         applyDraft(full.draft, full.fieldsHash);
         setStep(firstUsefulStep(full.draft));
+        if (entryChannel === 'voice') startVoiceFilling(full.draft);
         setStarting(null);
       }
     } catch (err: any) {
@@ -431,6 +443,44 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
 
       {error && <Alert tone="danger" title={error} />}
 
+      {/* Hands-free guide: documents, photo, review, approval and download by voice */}
+      <VoiceDocs
+        start={docVoice}
+        speechLocale={langConfig.speechLocale}
+        language={language}
+        getDraft={() => draftRef.current}
+        hasPhoto={() => Boolean(sessionRef.current?.photo?.usable)}
+        onSession={onSession}
+        refreshDraft={async () => {
+          if (!draftRef.current) return null;
+          const res = await autofillApi.getDraft(draftRef.current.id);
+          applyDraft(res.draft, res.fieldsHash);
+          draftRef.current = res.draft;
+          return res.draft;
+        }}
+        onAnswerInstead={() => {
+          setStep(2);
+          setTypeInstead(true);
+          setQuestionVoice((n) => n + 1);
+        }}
+        onShowStep={setStep}
+        onApprove={async () => {
+          const current = await autofillApi.getDraft(draft.id);
+          if (!current.draft.readyForApproval) {
+            applyDraft(current.draft, current.fieldsHash);
+            return false;
+          }
+          const res = await autofillApi.approve(draft.id, current.fieldsHash);
+          applyDraft(res.draft, res.fieldsHash);
+          return true;
+        }}
+        onDownload={async () => {
+          await autofillApi.downloadPdf(draft.id, { use: draft.officialForm ? 'official' : 'draft' });
+          const res = await autofillApi.getDraft(draft.id);
+          applyDraft(res.draft, res.fieldsHash);
+        }}
+      />
+
       <div key={step} className="animate-fade-up">
         {step === 1 && (
           <DocumentStep
@@ -448,26 +498,6 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         {step === 2 && (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <div className="space-y-6">
-              <VoiceDocs
-                start={docVoice}
-                speechLocale={langConfig.speechLocale}
-                hindi={language === 'hi'}
-                getDraft={() => draftRef.current}
-                hasPhoto={() => Boolean(sessionRef.current?.photo?.usable)}
-                onSession={onSession}
-                refreshDraft={async () => {
-                  if (!draftRef.current) return null;
-                  const res = await autofillApi.getDraft(draftRef.current.id);
-                  applyDraft(res.draft, res.fieldsHash);
-                  draftRef.current = res.draft;
-                  return res.draft;
-                }}
-                onAnswerInstead={() => {
-                  setTypeInstead(true);
-                  setQuestionVoice((n) => n + 1);
-                }}
-                onAllDone={() => setStep(3)}
-              />
               <ConflictResolver t={t} conflicts={draft.conflicts} onSession={onSession} onResolved={refreshDraft} />
               {fromDocs.length > 0 && !typeInstead && (
                 <section className="card border-teal/30 bg-teal-50/40 p-5 sm:p-6" aria-labelledby="fromdocs-h">
@@ -495,8 +525,8 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                   </div>
                 </section>
               )}
-              {(questions.length > 0 || fromDocs.length === 0 || typeInstead) && (
-              <section className="card p-5 sm:p-6" aria-labelledby="q-h">
+              {/* Kept mounted (only hidden) so a voice session can finish and hand over to documents */}
+              <section className={`card p-5 sm:p-6 ${questions.length > 0 || fromDocs.length === 0 || typeInstead ? '' : 'hidden'}`} aria-labelledby="q-h">
                 <h2 id="q-h" className="text-lg font-bold text-navy">{questions.length ? t.questionsTitle : t.questionsDone}</h2>
                 <p className="mt-1 text-sm text-muted">Only what your documents cannot tell us — about this application and your situation. Type, tap or speak your answer.</p>
                 <div className="mt-4">
@@ -507,12 +537,12 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                     questions={questions}
                     onAnswer={answer}
                     voiceStart={questionVoice}
+                    voiceIntro={voiceIntro}
                     onVoiceFinished={() => startDocVoice(true)}
                     onScanRequest={() => startDocVoice(false)}
                   />
                 </div>
               </section>
-              )}
             </div>
             <aside className="card h-fit p-5" aria-labelledby="known-h">
               <h2 id="known-h" className="font-bold text-navy">Already filled</h2>
@@ -523,7 +553,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                   .map((f) => (
                     <li key={f.key} className="flex items-baseline justify-between gap-3 text-sm">
                       <span className="text-muted">{f.label}</span>
-                      <span className="truncate text-right font-semibold text-navy">{f.value}</span>
+                      <span translate="no" className="truncate text-right font-semibold text-navy">{f.value}</span>
                     </li>
                   ))}
               </ul>

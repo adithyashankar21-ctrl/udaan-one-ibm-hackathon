@@ -36,8 +36,8 @@ interface VoiceStudioProps {
   onOpenSmartApply?: () => void;
 }
 
-// Languages offered as one-tap chips; the rest are in the header language menu
-const QUICK_LANGS: LanguageCode[] = ['en', 'hi', 'ta', 'te', 'kn', 'ml', 'mr', 'bn'];
+// Every language is a one-tap chip (the row scrolls sideways on small screens)
+const QUICK_LANGS: LanguageCode[] = SUPPORTED_LANGUAGES.map((l) => l.code);
 
 const AssistantMark: React.FC<{ state: string }> = ({ state }) => (
   <span className="relative grid h-11 w-11 shrink-0 place-items-center" aria-hidden>
@@ -155,7 +155,7 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
               <HelpCircle className="h-4 w-4" aria-hidden /> Help
             </button>
           </div>
-          <div className="-mx-1 flex w-full gap-1.5 overflow-x-auto px-1 pb-0.5" role="radiogroup" aria-label="Conversation language">
+          <div className="-mx-1 flex w-full gap-1.5 overflow-x-auto px-1 pb-0.5" role="radiogroup" aria-label="Conversation language" translate="no">
             {QUICK_LANGS.map((code) => {
               const l = SUPPORTED_LANGUAGES.find((x) => x.code === code);
               if (!l) return null;
@@ -194,7 +194,7 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
               {voice.messages.map((m, i) =>
                 m.role === 'user' ? (
                   <li key={i} className="flex justify-end gap-2.5">
-                    <p className="max-w-[85%] rounded-2xl rounded-br-md bg-navy px-4 py-2.5 text-sm leading-relaxed text-white">{m.content}</p>
+                    <p translate="no" className="max-w-[85%] rounded-2xl rounded-br-md bg-navy px-4 py-2.5 text-sm leading-relaxed text-white">{m.content}</p>
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-saffron-50 text-saffron-600" aria-hidden>
                       <UserRound className="h-4 w-4" />
                     </span>

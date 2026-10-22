@@ -24,6 +24,9 @@ import {
 } from 'lucide-react';
 import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis } from '../types';
 import { aiService, offlineReply } from '../services/aiService';
+import { scriptLanguage, toAsciiDigits, toLanguageCode } from '../data/languageTools';
+import { APPLY_INTENT_EVENT, type ApplyIntentDetail } from '../services/autofillApi';
+import { isApplicationRequest, useIvrApplication } from './smartapply/useIvrApplication';
 
 interface IvrHelplineProps {
   currentLanguage: LanguageCode;
@@ -50,8 +53,9 @@ const IVR_LANGUAGES: Record<string, LanguageBranch> = {
     native: 'English',
     locale: 'en-IN',
     agentGreeting:
-      'Connected to PM-AJAY Live Helpline Agent. I can help with free NSQF skill courses, capital subsidy, or creating your roadmap. Please tell me your name, district, or what trade you want to pursue.',
+      'Connected to PM-AJAY Live Helpline Agent. I can help with free NSQF skill courses, capital subsidy, or creating your roadmap. Please tell me your name, district, or what trade you want to pursue. To continue a form you started in Smart Apply, say its reference or press 4.',
     sampleVoicePills: [
+      'I want to continue my application',
       'My name is Anitha from Madurai, I want tailoring training',
       'How to get capital subsidy under PM-AJAY?',
       'What courses are available in Agra for leather craft?',
@@ -64,8 +68,9 @@ const IVR_LANGUAGES: Record<string, LanguageBranch> = {
     native: 'हिन्दी',
     locale: 'hi-IN',
     agentGreeting:
-      'नमस्ते! PM-AJAY लाइव हेल्पलाइन काउंसलर से आपका संपर्क हो गया है। मैं आपको मुफ्त NSQF कोर्स, पूंजी अनुदान और आजीविका रोडमैप में मदद कर सकता हूँ। कृपया अपना नाम, जिला और पसंदीदा काम बताएं।',
+      'नमस्ते! PM-AJAY लाइव हेल्पलाइन काउंसलर से आपका संपर्क हो गया है। मैं आपको मुफ्त NSQF कोर्स, पूंजी अनुदान और आजीविका रोडमैप में मदद कर सकता हूँ। कृपया अपना नाम, जिला और पसंदीदा काम बताएं। Smart Apply में शुरू किया आवेदन जारी रखने के लिए उसका रेफ़रेंस बोलें या 4 दबाएं।',
     sampleVoicePills: [
+      'मुझे अपना आवेदन पूरा करना है',
       'मेरा नाम रमेश है, मैं आगरा में चमड़े का काम करता हूँ',
       'PM-AJAY 50,000 रुपये पूंजी अनुदान कैसे मिलेगा?',
       'सोलर और बिजली मिस्त्री के कोर्स की जानकारी दें',
@@ -128,6 +133,90 @@ const IVR_LANGUAGES: Record<string, LanguageBranch> = {
       'എന്റെ റോഡ്‌മാപ്പ് തയാറാക്കൂ',
     ],
   },
+  '7': {
+    code: 'mr',
+    name: 'Marathi',
+    native: 'मराठी',
+    locale: 'mr-IN',
+    agentGreeting:
+      'नमस्कार! PM-AJAY लाइव्ह हेल्पलाइन समुपदेशकाशी तुमचा संपर्क झाला आहे. मोफत NSQF प्रशिक्षण, भांडवली अनुदान आणि उपजीविका रोडमॅपसाठी मी मदत करू शकतो. कृपया तुमचे नाव, जिल्हा आणि आवडीचे काम सांगा. Smart Apply मध्ये सुरू केलेला अर्ज पुढे नेण्यासाठी त्याचा रेफरन्स सांगा किंवा 4 दाबा.',
+    sampleVoicePills: [
+      'मला माझा अर्ज पूर्ण करायचा आहे',
+      'माझे नाव सुनीता, मला शिवणकाम शिकायचे आहे',
+      'PM-AJAY भांडवली अनुदान कसे मिळेल?',
+      'माझा उपजीविका रोडमॅप तयार करा',
+    ],
+  },
+  '8': {
+    code: 'bn',
+    name: 'Bengali',
+    native: 'বাংলা',
+    locale: 'bn-IN',
+    agentGreeting:
+      'নমস্কার! PM-AJAY লাইভ হেল্পলাইন কাউন্সেলরের সঙ্গে আপনি যুক্ত হয়েছেন। বিনামূল্যে NSQF প্রশিক্ষণ, মূলধন ভর্তুকি এবং জীবিকা রোডম্যাপে আমি সাহায্য করতে পারি। আপনার নাম, জেলা আর পছন্দের কাজ বলুন। Smart Apply-তে শুরু করা আবেদন চালিয়ে যেতে তার রেফারেন্স বলুন বা 4 টিপুন।',
+    sampleVoicePills: [
+      'আমি আমার আবেদন শেষ করতে চাই',
+      'আমার নাম রিনা, আমি সেলাইয়ের কাজ শিখতে চাই',
+      'PM-AJAY মূলধন ভর্তুকি কীভাবে পাব?',
+      'আমার জীবিকা রোডম্যাপ তৈরি করুন',
+    ],
+  },
+  '9': {
+    code: 'gu',
+    name: 'Gujarati',
+    native: 'ગુજરાતી',
+    locale: 'gu-IN',
+    agentGreeting:
+      'નમસ્તે! PM-AJAY લાઇવ હેલ્પલાઇન કાઉન્સેલર સાથે તમારો સંપર્ક થયો છે. મફત NSQF તાલીમ, મૂડી સબસિડી અને આજીવિકા રોડમેપમાં હું મદદ કરી શકું છું. કૃપા કરીને તમારું નામ, જિલ્લો અને ગમતું કામ જણાવો. Smart Apply માં શરૂ કરેલી અરજી ચાલુ રાખવા તેનો રેફરન્સ બોલો અથવા 4 દબાવો.',
+    sampleVoicePills: [
+      'મારે મારી અરજી પૂરી કરવી છે',
+      'મારું નામ મીના છે, મારે સિલાઈ શીખવી છે',
+      'PM-AJAY મૂડી સબસિડી કેવી રીતે મળે?',
+      'મારો આજીવિકા રોડમેપ બનાવો',
+    ],
+  },
+  '0': {
+    code: 'pa',
+    name: 'Punjabi',
+    native: 'ਪੰਜਾਬੀ',
+    locale: 'pa-IN',
+    agentGreeting:
+      'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! PM-AJAY ਲਾਈਵ ਹੈਲਪਲਾਈਨ ਕਾਉਂਸਲਰ ਨਾਲ ਤੁਹਾਡਾ ਸੰਪਰਕ ਹੋ ਗਿਆ ਹੈ। ਮੁਫ਼ਤ NSQF ਸਿਖਲਾਈ, ਪੂੰਜੀ ਸਬਸਿਡੀ ਅਤੇ ਰੋਜ਼ੀ-ਰੋਟੀ ਰੋਡਮੈਪ ਵਿੱਚ ਮੈਂ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਨਾਮ, ਜ਼ਿਲ੍ਹਾ ਅਤੇ ਪਸੰਦ ਦਾ ਕੰਮ ਦੱਸੋ। Smart Apply ਵਿੱਚ ਸ਼ੁਰੂ ਕੀਤੀ ਅਰਜ਼ੀ ਜਾਰੀ ਰੱਖਣ ਲਈ ਉਸਦਾ ਰੈਫ਼ਰੈਂਸ ਦੱਸੋ ਜਾਂ 4 ਦਬਾਓ।',
+    sampleVoicePills: [
+      'ਮੈਂ ਆਪਣੀ ਅਰਜ਼ੀ ਪੂਰੀ ਕਰਨੀ ਹੈ',
+      'ਮੇਰਾ ਨਾਮ ਗੁਰਪ੍ਰੀਤ ਹੈ, ਮੈਂ ਬਿਜਲੀ ਦਾ ਕੰਮ ਸਿੱਖਣਾ ਹੈ',
+      'PM-AJAY ਪੂੰਜੀ ਸਬਸਿਡੀ ਕਿਵੇਂ ਮਿਲੇਗੀ?',
+      'ਮੇਰਾ ਰੋਜ਼ੀ-ਰੋਟੀ ਰੋਡਮੈਪ ਬਣਾਓ',
+    ],
+  },
+  '*': {
+    code: 'or',
+    name: 'Odia',
+    native: 'ଓଡ଼ିଆ',
+    locale: 'or-IN',
+    agentGreeting:
+      'ନମସ୍କାର! PM-AJAY ଲାଇଭ୍ ହେଲ୍ପଲାଇନ୍ ପରାମର୍ଶଦାତାଙ୍କ ସହ ଆପଣଙ୍କ ସଂଯୋଗ ହୋଇଛି। ମାଗଣା NSQF ତାଲିମ, ପୁଞ୍ଜି ସବସିଡି ଏବଂ ଜୀବିକା ରୋଡମ୍ୟାପରେ ମୁଁ ସାହାଯ୍ୟ କରିପାରିବି। ଦୟାକରି ଆପଣଙ୍କ ନାମ, ଜିଲ୍ଲା ଏବଂ ପସନ୍ଦର କାମ କୁହନ୍ତୁ। Smart Apply ରେ ଆରମ୍ଭ କରିଥିବା ଆବେଦନ ଜାରି ରଖିବାକୁ ତାହାର ରେଫରେନ୍ସ କୁହନ୍ତୁ କିମ୍ବା 4 ଦବାନ୍ତୁ।',
+    sampleVoicePills: [
+      'ମୁଁ ମୋ ଆବେଦନ ସମ୍ପୂର୍ଣ୍ଣ କରିବାକୁ ଚାହୁଁଛି',
+      'ମୋ ନାମ ସୁମିତ୍ରା, ମୁଁ ସିଲେଇ କାମ ଶିଖିବାକୁ ଚାହେଁ',
+      'PM-AJAY ପୁଞ୍ଜି ସବସିଡି କିପରି ମିଳିବ?',
+      'ମୋ ଜୀବିକା ରୋଡମ୍ୟାପ ପ୍ରସ୍ତୁତ କରନ୍ତୁ',
+    ],
+  },
+  '#': {
+    code: 'ur',
+    name: 'Urdu',
+    native: 'اردو',
+    locale: 'ur-IN',
+    agentGreeting:
+      'آداب! PM-AJAY لائیو ہیلپ لائن کاؤنسلر سے آپ کا رابطہ ہو گیا ہے۔ مفت NSQF تربیت، سرمایہ سبسڈی اور روزگار روڈ میپ میں میں مدد کر سکتا ہوں۔ براہ کرم اپنا نام، ضلع اور پسند کا کام بتائیں۔ Smart Apply میں شروع کی گئی درخواست جاری رکھنے کے لیے اس کا ریفرنس بولیں یا 4 دبائیں۔',
+    sampleVoicePills: [
+      'مجھے اپنی درخواست مکمل کرنی ہے',
+      'میرا نام سلمیٰ ہے، مجھے سلائی کا کام سیکھنا ہے',
+      'PM-AJAY سرمایہ سبسڈی کیسے ملے گی؟',
+      'میرا روزگار روڈ میپ بنائیں',
+    ],
+  },
 };
 
 // How long the caller must stay silent before their speech is sent to the agent
@@ -135,14 +224,34 @@ const CALLER_SILENCE_MS = 2000;
 
 const getInitialLangKey = (lang?: string): string => {
   if (!lang) return '1';
-  const l = lang.toLowerCase();
-  if (l.includes('tamil') || l === 'ta') return '3';
-  if (l.includes('hindi') || l === 'hi') return '2';
-  if (l.includes('telugu') || l === 'te') return '4';
-  if (l.includes('kannada') || l === 'kn') return '5';
-  if (l.includes('malayalam') || l === 'ml') return '6';
-  return '1';
+  const code = toLanguageCode(lang);
+  return Object.keys(IVR_LANGUAGES).find((k) => IVR_LANGUAGES[k].code === code) || '1';
 };
+
+/** Language names and greetings callers may say to choose a language, by keypad key. */
+const SPOKEN_LANGUAGE_WORDS: Array<[string, RegExp]> = [
+  ['7', /marathi|मराठी/i],
+  ['3', /tamil|தமிழ்|இந்தி|vanakkam|வணக்கம்|three|மூன்று/i],
+  ['2', /hindi|हिन्दी|हिंदी|namaste|नमस्ते|\btwo\b|\bदो\b/i],
+  ['4', /telugu|తెలుగు|four|నాలుగు/i],
+  ['5', /kannada|ಕನ್ನಡ|five|ಐದು/i],
+  ['6', /malayalam|മലയാളം|\bsix\b|ആറ്/i],
+  ['8', /bengali|bangla|বাংলা|eight|আট/i],
+  ['9', /gujarati|ગુજરાતી|nine|નવ/i],
+  ['0', /punjabi|ਪੰਜਾਬੀ|zero|sat sri akal|ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ/i],
+  ['*', /odia|oriya|ଓଡ଼ିଆ|ଓଡିଆ|star/i],
+  ['#', /urdu|اردو|adaab|آداب|hash/i],
+  ['1', /english|\bone\b/i],
+];
+
+/** The menu key for the language a caller spoke or named; English when unclear. */
+function spokenLanguageKey(text: string): string {
+  const named = SPOKEN_LANGUAGE_WORDS.find(([, re]) => re.test(text));
+  if (named) return named[0];
+  const digit = toAsciiDigits(text).match(/^\s*(\d)\b/);
+  if (digit && IVR_LANGUAGES[digit[1]]) return digit[1];
+  return getInitialLangKey(scriptLanguage(text));
+}
 
 export const IvrHelpline: React.FC<IvrHelplineProps> = ({
   currentLanguage,
@@ -230,6 +339,32 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
   }, [currentLanguage, callActive]);
 
   const activeBranch = IVR_LANGUAGES[activeIvrKey] || IVR_LANGUAGES['1'];
+
+  // Continuing a Smart Apply application inside the call (reference → questions → saved answers)
+  const ivrApp = useIvrApplication({
+    language: activeBranch.code,
+    setBusy: setIsProcessing,
+    say: async (text) => {
+      const branch = activeBranchRef.current;
+      setTranscriptLog((prev) => [...prev, { speaker: `Application desk (${branch.name})`, text, time: formatCallTime(callDuration) }]);
+      stopLiveSpeechRecognition();
+      setIsAgentSpeaking(true);
+      // Short form prompts use the device voice: instant, so the back-and-forth never lags
+      await aiService.speakQuick(text, branch.locale);
+      setIsAgentSpeaking(false);
+    },
+  });
+
+  // "I want to apply for …" heard in the call: take the application right here after the agent replies
+  const pendingApplyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const onIntent = (e: Event) => {
+      const d = (e as CustomEvent<ApplyIntentDetail>).detail;
+      if (callActiveRef.current && d.channel === 'helpline' && d.schemeId) pendingApplyRef.current = d.schemeId;
+    };
+    window.addEventListener(APPLY_INTENT_EVENT, onIntent);
+    return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
+  }, []);
 
   // Scroll transcript to bottom
   useEffect(() => {
@@ -707,14 +842,14 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
     } else {
       setCurrentPromptStep(1);
       const welcomeAnnouncement =
-        'Welcome to PM-AJAY National Livelihood Helpline 1800-11-2529. For English press 1. हिन्दी के लिए 2 दबाएं. தமிழுக்கு 3-ஐ அழுத்தவும். తెలుగు కోసం 4 నొక్కండి. ಕನ್ನಡಕ್ಕಾಗಿ 5 ಒತ್ತಿರಿ. മലയാളത്തിനായി 6 അമർത്തുക.';
+        'Welcome to PM-AJAY National Livelihood Helpline 1800-11-2529. For English press 1. हिन्दी के लिए 2 दबाएं. தமிழுக்கு 3-ஐ அழுத்தவும். తెలుగు కోసం 4 నొక్కండి. ಕನ್ನಡಕ್ಕಾಗಿ 5 ಒತ್ತಿರಿ. മലയാളത്തിനായി 6 അമർത്തുക. मराठीसाठी 7 दाबा. বাংলার জন্য 8 টিপুন. ગુજરાતી માટે 9 દબાવો. ਪੰਜਾਬੀ ਲਈ 0 ਦਬਾਓ. ଓଡ଼ିଆ ପାଇଁ ଷ୍ଟାର ଦବାନ୍ତୁ. اردو کے لیے ہیش دبائیں۔';
 
       setTranscriptLog([
         {
           speaker: 'Helpline Gateway (1800-11-2529)',
           text: `📞 Connected to PM-AJAY National Helpline. ${
             micGranted ? '🎙️ Hardware Microphone Connected & Active.' : '⚠️ Please click the microphone button to enable voice.'
-          }\nPress 1 for English • 2 for हिन्दी • 3 for தமிழ் • 4 for తెలుగు • 5 for ಕನ್ನಡ • 6 for മലയാളം — or speak your preferred language directly!`,
+          }\nPress 1 for English • 2 for हिन्दी • 3 for தமிழ் • 4 for తెలుగు • 5 for ಕನ್ನಡ • 6 for മലയാളം • 7 for मराठी • 8 for বাংলা • 9 for ગુજરાતી • 0 for ਪੰਜਾਬੀ • * for ଓଡ଼ିଆ • # for اردو — or speak your preferred language directly!`,
           time: '00:01',
         },
       ]);
@@ -772,15 +907,15 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
       },
     ]);
 
+    // The caller already said what they want: answer that now instead of reading the greeting
+    if (pendingQuery) {
+      setTimeout(() => handleCallerSpokenInputRef.current(pendingQuery), 50);
+      return;
+    }
     setIsAgentSpeaking(true);
     aiService.playSpeech(branch.agentGreeting, branch.locale).then(() => {
       setIsAgentSpeaking(false);
       startLiveSpeechRecognition();
-      if (pendingQuery) {
-        setTimeout(() => {
-          handleCallerSpokenInput(pendingQuery);
-        }, 300);
-      }
     });
   };
 
@@ -790,6 +925,7 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
     setPressedKeys((prev) => [...prev, digit]);
 
     if (!callActive) return;
+    if (ivrApp.handleKey(digit)) return;
 
     if (currentPromptStep === 1) {
       // Step 1: Language selection
@@ -800,6 +936,9 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
       if (digit === '*') {
         setCurrentPromptStep(1);
         handleStartCall();
+      } else if (digit === '4') {
+        aiService.stopAudio();
+        ivrApp.begin();
       } else if (digit === '1') {
         const query =
           activeBranch.code === 'ta'
@@ -870,72 +1009,17 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
     setIsAgentSpeaking(false);
     stopLiveSpeechRecognition();
 
+    // A form reference, "continue my application", or an answer while an application is open
+    if (ivrApp.active || isApplicationRequest(text)) {
+      if (currentPromptStep === 1) setCurrentPromptStep(2);
+      setTranscriptLog((prev) => [...prev, { speaker: 'Caller (You Spoken)', text: ivrApp.stage === 'pin' ? '••••' : text, time: formatCallTime(callDuration) }]);
+      await ivrApp.handleText(text);
+      return;
+    }
+
     // 1. If currently in language selection step, detect spoken language
     if (currentPromptStep === 1) {
-      const lower = text.toLowerCase();
-      let matchedKey = '';
-
-      if (
-        /[\u0B80-\u0BFF]/.test(text) ||
-        lower.includes('tamil') ||
-        text.includes('தமிழ்') ||
-        lower.includes('three') ||
-        text.includes('3') ||
-        text.includes('மூன்று') ||
-        text.includes('தமிழுக்கு') ||
-        text.includes('வணக்கம்') ||
-        lower.includes('vanakkam')
-      ) {
-        matchedKey = '3';
-      } else if (
-        /[\u0900-\u097F]/.test(text) ||
-        lower.includes('hindi') ||
-        text.includes('हिन्दी') ||
-        text.includes('हिंदी') ||
-        lower.includes('two') ||
-        text.includes('2') ||
-        text.includes('दो') ||
-        lower.includes('namaste') ||
-        text.includes('नमस्ते') ||
-        text.includes('இந்தி')
-      ) {
-        matchedKey = '2';
-      } else if (
-        /[\u0C00-\u0C7F]/.test(text) ||
-        lower.includes('telugu') ||
-        text.includes('తెలుగు') ||
-        lower.includes('four') ||
-        text.includes('4') ||
-        text.includes('నాలుగు') ||
-        text.includes('నమస్కారం') ||
-        text.includes('தெலுங்கு')
-      ) {
-        matchedKey = '4';
-      } else if (
-        /[\u0C80-\u0CFF]/.test(text) ||
-        lower.includes('kannada') ||
-        text.includes('ಕನ್ನಡ') ||
-        lower.includes('five') ||
-        text.includes('5') ||
-        text.includes('ಐದು') ||
-        text.includes('ನಮಸ್ಕಾರ') ||
-        text.includes('கன்னடம்')
-      ) {
-        matchedKey = '5';
-      } else if (
-        /[\u0D00-\u0D7F]/.test(text) ||
-        lower.includes('malayalam') ||
-        text.includes('മലയാളം') ||
-        lower.includes('six') ||
-        text.includes('6') ||
-        text.includes('ആറ്') ||
-        text.includes('നമസ്കാരം') ||
-        text.includes('மலையாளம்')
-      ) {
-        matchedKey = '6';
-      } else {
-        matchedKey = '1';
-      }
+      const matchedKey = spokenLanguageKey(text);
 
       if (matchedKey) {
         setTranscriptLog((prev) => [
@@ -1019,6 +1103,12 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
       setIsAgentSpeaking(true);
       await aiService.playSpeech(reply, activeBranch.locale);
       setIsAgentSpeaking(false);
+      const applyFor = pendingApplyRef.current;
+      pendingApplyRef.current = null;
+      if (applyFor && callActiveRef.current) {
+        await ivrApp.startNew(applyFor);
+        return;
+      }
       startLiveSpeechRecognition();
     } catch (err) {
       console.error('Agent chat error:', err);
@@ -1265,6 +1355,12 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
                   { key: '4', label: '4. తెలుగు', code: 'te' },
                   { key: '5', label: '5. ಕನ್ನಡ', code: 'kn' },
                   { key: '6', label: '6. മലയാളം', code: 'ml' },
+                  { key: '7', label: '7. मराठी', code: 'mr' },
+                  { key: '8', label: '8. বাংলা', code: 'bn' },
+                  { key: '9', label: '9. ગુજરાતી', code: 'gu' },
+                  { key: '0', label: '0. ਪੰਜਾਬੀ', code: 'pa' },
+                  { key: '*', label: '*. ଓଡ଼ିଆ', code: 'or' },
+                  { key: '#', label: '#. اردو', code: 'ur' },
                 ].map((l) => (
                   <button
                     key={l.key}
@@ -1291,7 +1387,7 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
             { num: '1', sub: currentPromptStep === 1 ? 'English' : 'NSQF' },
             { num: '2', sub: currentPromptStep === 1 ? 'हिन्दी' : 'Grants' },
             { num: '3', sub: currentPromptStep === 1 ? 'தமிழ்' : 'Counselor' },
-            { num: '4', sub: currentPromptStep === 1 ? 'తెలుగు' : 'District' },
+            { num: '4', sub: currentPromptStep === 1 ? 'తెలుగు' : 'My form' },
             { num: '5', sub: currentPromptStep === 1 ? 'ಕನ್ನಡ' : 'Stipend' },
             { num: '6', sub: currentPromptStep === 1 ? 'മലയാളം' : 'Self-Emp' },
             { num: '7', sub: 'PQRS' },
@@ -1457,6 +1553,20 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
                     ? 'Listening — take your time…'
                     : 'Your turn — speak anytime'}
                 </p>
+                {/* The last few turns, so the caller can see the question being asked */}
+                <ol className="mt-4 w-full max-w-lg space-y-1.5 text-left" aria-label="Recent conversation">
+                  {transcriptLog.slice(-4).map((l, i) => (
+                    <li
+                      key={`${transcriptLog.length}-${i}`}
+                      className={`rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                        l.speaker.startsWith('Caller') ? 'ml-8 bg-sky-500/15 text-sky-100' : 'mr-8 bg-slate-800 text-slate-200'
+                      }`}
+                    >
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">{l.speaker}</span>
+                      <span className="line-clamp-4" translate={l.speaker.startsWith('Caller') ? 'no' : undefined}>{l.text}</span>
+                    </li>
+                  ))}
+                </ol>
               </div>
               <div ref={logEndRef} />
             </>

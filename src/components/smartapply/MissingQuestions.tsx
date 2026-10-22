@@ -3,6 +3,7 @@ import { AudioLines, Bot, CheckCircle2, Loader2, Mic, MicOff, Send, Square } fro
 import type { SmartApplyStrings } from '../../data/smartApplyStrings';
 import type { LanguageCode } from '../../types';
 import { VOICE_COMMANDS, useDictation, useVoiceTurns } from './media';
+import { prefetchTranslations, spokenIn } from '../../services/translate';
 
 export interface Question {
   key: string;
@@ -30,6 +31,8 @@ interface Props {
   onScanRequest?: () => void;
   /** Change this number to start hands-free mode from outside. */
   voiceStart?: number;
+  /** Said before the first question when started from outside (e.g. the scheme name). */
+  voiceIntro?: string;
 }
 
 /** Fixed phrases of the voice conversation. Questions themselves come from the form. */
@@ -91,10 +94,12 @@ export const MissingQuestions: React.FC<Props> = (props) => {
   const hi = language === 'hi';
 
   const ask = (q: Question) => (hi && q.questionHi ? q.questionHi : q.question || q.label);
-  const { onVoiceFinished, onScanRequest, voiceStart } = props;
+  const { onVoiceFinished, onScanRequest, voiceStart, voiceIntro } = props;
   const lastAsked = useRef<string | null>(null);
   const phrases = hi ? PHRASES.hi : PHRASES.en;
   const voice = useVoiceTurns(speechLocale);
+  /** Speaks in the chosen language: English parts are translated for languages without written phrases. */
+  const say = async (...parts: string[]) => voice.say(await spokenIn(language, ...parts));
   const [handsFree, setHandsFree] = useState(false);
   const handsFreeRef = useRef(false);
   const [voiceTick, setVoiceTick] = useState(0);
@@ -110,7 +115,7 @@ export const MissingQuestions: React.FC<Props> = (props) => {
 
   useEffect(() => {
     if (voiceStart) {
-      prefixRef.current = turns.length > 1 ? '' : phrases.start + ' ';
+      prefixRef.current = turns.length > 1 ? '' : `${voiceIntro ? `${voiceIntro} ` : ''}${phrases.start} `;
       setHands(true);
       setVoiceTick((n) => n + 1);
     }
@@ -127,7 +132,7 @@ export const MissingQuestions: React.FC<Props> = (props) => {
       const prefix = prefixRef.current;
       prefixRef.current = '';
       if (!current) {
-        await voice.say(`${prefix}${phrases.allDone}`);
+        await say(prefix, phrases.allDone);
         if (alive && handsFreeRef.current) {
           setHands(false);
           onVoiceFinished?.();
@@ -135,15 +140,14 @@ export const MissingQuestions: React.FC<Props> = (props) => {
         return;
       }
       const issue = current.issues?.[0];
-      const spoken = `${prefix}${ask(current)}${issue ? ` ${issue}.` : ''} ${answerHint(current, phrases)}`.trim();
-      if (!(await voice.say(spoken)) || !alive) return;
+      if (!(await say(prefix, ask(current), issue ? `${issue}.` : '', answerHint(current, phrases))) || !alive) return;
       const heard = await voice.listen(current.options ? 7000 : 10000);
       if (heard === null || !alive || !handsFreeRef.current) return;
       if (!heard) {
         if (++missesRef.current >= 2) {
           missesRef.current = 0;
           setHands(false);
-          voice.say(phrases.paused);
+          say(phrases.paused);
           return;
         }
         prefixRef.current = `${phrases.again} `;
@@ -155,7 +159,7 @@ export const MissingQuestions: React.FC<Props> = (props) => {
       const command = wordCount <= 3;
       if (command && VOICE_COMMANDS.stop.test(heard)) {
         setHands(false);
-        voice.say(phrases.stopped);
+        say(phrases.stopped);
         return;
       }
       if (command && VOICE_COMMANDS.repeat.test(heard)) return setVoiceTick((n) => n + 1);
@@ -179,6 +183,12 @@ export const MissingQuestions: React.FC<Props> = (props) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handsFree, pending[0]?.key, voiceTick]);
+
+  // Translate every question and fixed phrase ahead, so spoken turns do not wait for it
+  useEffect(() => {
+    prefetchTranslations([...questions.flatMap((q) => [ask(q), answerHint(q, phrases)]), ...Object.values(phrases)], language);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions.map((q) => q.key).join(), language]);
 
   useEffect(() => {
     if (current && lastAsked.current !== current.key) {
@@ -253,6 +263,7 @@ export const MissingQuestions: React.FC<Props> = (props) => {
         {turns.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
+              translate={m.role === 'user' ? 'no' : undefined}
               className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                 m.role === 'user'
                   ? 'bg-green text-white'

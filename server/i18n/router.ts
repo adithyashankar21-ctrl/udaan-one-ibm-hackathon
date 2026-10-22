@@ -83,9 +83,10 @@ Rules:
 - Translate whole words: never mix English letters into a word of the native script.
 Return exactly one translation per input, in the same order.`;
 
-export function createTranslateRouter(generate: Generate) {
-  const router = express.Router();
+/** Translates English texts into `lang` (cached); null where a text could not be translated. */
+export type Translate = (lang: string, texts: string[], urgent?: boolean) => Promise<Array<string | null>>;
 
+export function createTranslator(generate: Generate): Translate {
   const translateBatch = async (lang: string, texts: string[]) => {
     const res = await generate(
       {
@@ -110,20 +111,15 @@ export function createTranslateRouter(generate: Generate) {
     scheduleSave(lang);
   };
 
-  router.post('/translate', async (req, res) => {
-    const lang = String(req.body?.lang || '');
-    // Words about to be spoken go ahead of interface text waiting in line
-    const urgent = req.body?.urgent === true;
-    const raw = req.body?.texts;
-    if (!LANGUAGES[lang]) return res.status(400).json({ error: 'Unsupported language' });
-    if (!Array.isArray(raw) || raw.length > MAX_TEXTS) return res.status(400).json({ error: 'Send up to 300 texts' });
-    const texts = raw.map((t) => String(t ?? '').slice(0, MAX_LENGTH));
+  return async (lang, texts, urgent = false) => {
+    if (lang === 'en' || !LANGUAGES[lang]) return texts;
     const cache = cacheFor(lang);
-
     const missing = [...new Set(texts.filter((t) => t.trim() && !(t in cache) && !inFlight.has(`${lang}|${t}`)))];
     for (let i = 0; i < missing.length; i += BATCH) {
       const batch = missing.slice(i, i + BATCH);
-      const job = (urgent ? translateBatch(lang, batch) : oneAtATime(() => translateBatch(lang, batch))).catch((err) => console.warn(`Translation to ${lang} failed:`, String(err?.message || err).slice(0, 160)));
+      const job = (urgent ? translateBatch(lang, batch) : oneAtATime(() => translateBatch(lang, batch))).catch((err) =>
+        console.warn(`Translation to ${lang} failed:`, String(err?.message || err).slice(0, 160))
+      );
       batch.forEach((t) => {
         const key = `${lang}|${t}`;
         inFlight.set(
@@ -132,9 +128,22 @@ export function createTranslateRouter(generate: Generate) {
         );
       });
     }
+    return Promise.all(texts.map(async (t) => cache[t] ?? (await inFlight.get(`${lang}|${t}`)) ?? null));
+  };
+}
 
-    const result = await Promise.all(texts.map(async (t) => cache[t] ?? (await inFlight.get(`${lang}|${t}`)) ?? null));
-    res.json({ translations: result });
+export function createTranslateRouter(translate: Translate) {
+  const router = express.Router();
+
+  router.post('/translate', async (req, res) => {
+    const lang = String(req.body?.lang || '');
+    // Words about to be spoken go ahead of interface text waiting in line
+    const urgent = req.body?.urgent === true;
+    const raw = req.body?.texts;
+    if (!LANGUAGES[lang]) return res.status(400).json({ error: 'Unsupported language' });
+    if (!Array.isArray(raw) || raw.length > MAX_TEXTS) return res.status(400).json({ error: 'Send up to 300 texts' });
+    const texts = raw.map((t) => String(t ?? '').slice(0, MAX_LENGTH));
+    res.json({ translations: await translate(lang, texts, urgent) });
   });
 
   return router;

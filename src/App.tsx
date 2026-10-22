@@ -33,6 +33,7 @@ import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
 import { saveLanguage, savedLanguage } from './components/AuthGate';
 import { ProfileSetup, profileComplete } from './components/ProfileSetup';
+import { CallMeCard } from './components/CallMeCard';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
 import { aiService } from './services/aiService';
@@ -545,6 +546,7 @@ export default function App() {
                     roadmap={roadmap}
                     onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
                   />
+                  <CallMeCard mobile={autofillSession?.profile?.fields.mobile?.value} />
                   <HelplineResume language={currentLanguage} langConfig={langConfig} />
                 </>
               )}

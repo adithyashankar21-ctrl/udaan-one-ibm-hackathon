@@ -24,6 +24,7 @@ import { checkPhoto } from './photo';
 import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
 import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
 import { authEnabled, bearerToken, verifyUser } from '../auth';
+import { INTERNAL_KEY } from '../internal';
 import {
   RETENTION_DAYS,
   deleteSession,
@@ -71,7 +72,7 @@ function useSessionToken(req: Request, token: string | null) {
 }
 
 /** Routes that hold no personal details, open without signing in. The phone helpline uses its reference and PIN. */
-const PUBLIC_ROUTE = /^\/(schemes|intent)$|^\/helpline\//;
+const PUBLIC_ROUTE = /^\/(schemes|intent)$|^\/helpline\/|^\/phone\//;
 
 function setCookie(req: Request, res: Response, token: string, maxAge = MAX_AGE_S) {
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
@@ -794,6 +795,61 @@ export function createAutofillRouter(generate: Generate) {
     const t = helplineTokens.get(String(req.headers['x-helpline-token'] || ''));
     if (!t) return res.status(401).json({ error: 'Helpline session expired.' });
     return serial(t.sessionHash, () => helplineAnswer(req, res));
+  });
+
+  /*
+   * Real phone calls (the Twilio helpline, server/voice): a caller's details are kept by their
+   * phone number, after they agree by voice. Only this server can call these routes.
+   */
+  const internalOnly = (req: Request, res: Response) => {
+    if (req.headers['x-internal-key'] !== INTERNAL_KEY) {
+      res.status(403).json({ error: 'Forbidden' });
+      return false;
+    }
+    return true;
+  };
+
+  router.post('/phone/start', (req, res) => {
+    if (!internalOnly(req, res)) return;
+    const caller = String(req.body?.caller || '').replace(/[^\d+]/g, '');
+    const schemeId = String(req.body?.schemeId || '');
+    if (!caller || !FORM_SCHEMA_MAP[schemeId]) return res.status(400).json({ error: 'Caller and scheme are needed' });
+    const account = `phone:${caller}`;
+    let token = loadUserSession(account);
+    let session = token ? loadSession(hashToken(token)) : null;
+    if (!session) {
+      const created = newSession();
+      session = created.data;
+      token = created.token;
+      saveUserSession(account, token);
+    }
+    session.consent = { version: CONSENT_VERSION, at: Date.now() };
+    let draft = session.drafts.find((d) => d.schemeId === schemeId && !d.generated);
+    if (!draft) {
+      draft = { id: crypto.randomBytes(8).toString('hex'), reference: newReference(), schemeId, createdAt: Date.now(), updatedAt: Date.now(), channels: [], answers: {} };
+      session.drafts.push(draft);
+    }
+    draft.channels.push({ channel: 'helpline', at: Date.now() });
+    if (!session.profile.fields.mobile && /^\+91[6-9]\d{9}$/.test(caller)) {
+      mergeCandidate(session.profile, 'mobile', { value: caller.slice(3), source: 'helpline', sourceLabel: SOURCE_LABELS.helpline, status: 'self_declared' });
+    }
+    saveSession(session);
+    const helpline = crypto.randomBytes(24).toString('base64url');
+    helplineTokens.set(helpline, { sessionHash: session.hash, draftId: draft.id, expires: Date.now() + 30 * 60 * 1000 });
+    res.json({ token: helpline, ...helplineView(session, draft) });
+  });
+
+  /** Set the PIN for an application started on the phone, so it can be opened in the app later. */
+  router.post('/phone/pin', (req, res) => {
+    if (!internalOnly(req, res)) return;
+    const c = helplineCtx(req);
+    if (!c) return res.status(401).json({ error: 'Helpline session expired.' });
+    const pin = String(req.body?.pin || '');
+    if (!/^\d{4,6}$/.test(pin) || /^(\d)\1+$/.test(pin) || '0123456789'.includes(pin)) return res.status(400).json({ error: 'weak_pin' });
+    c.draft.pinHash = hashPin(pin);
+    saveReference(c.draft.reference, c.session.hash, c.draft.id);
+    saveSession(c.session);
+    res.json({ reference: c.draft.reference });
   });
 
   const helplineAnswer = async (req: Request, res: Response) => {

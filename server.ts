@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createAutofillRouter, autofillErrorHandler } from './server/autofill/router';
 import { createLearnRouter } from './server/learn/router';
-import { createTranslateRouter } from './server/i18n/router';
+import { createTranslateRouter, createTranslator } from './server/i18n/router';
+import { createVoiceRouter } from './server/voice/router';
 import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
 import { detectIntentLocal } from './server/autofill/schemes';
@@ -126,7 +127,10 @@ async function generateWithFallback(
 // Smart Apply & Autofill (document intelligence, unified profile, form filling)
 app.use('/api/autofill', createAutofillRouter(generateWithFallback));
 app.use('/api/learn', createLearnRouter(generateWithFallback));
-app.use('/api/i18n', createTranslateRouter(generateWithFallback));
+const translate = createTranslator(generateWithFallback);
+app.use('/api/i18n', createTranslateRouter(translate));
+// The helpline on a real phone line (Twilio)
+app.use('/api/voice', createVoiceRouter({ translate, selfBase: `http://127.0.0.1:${PORT}` }));
 app.use(autofillErrorHandler);
 
 // Health check endpoint

@@ -9,6 +9,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Type } from '@google/genai';
 import type { Generate } from '../autofill/ocr';
+import { mixesScripts } from '../../src/data/languageTools';
+import type { LanguageCode } from '../../src/types';
 
 const LANGUAGES: Record<string, string> = {
   hi: 'Hindi',
@@ -81,13 +83,14 @@ Rules:
 - Keep the same punctuation, emoji and leading/trailing symbols. Keep line breaks.
 - A text that is only a name, code or number stays as it is.
 - Translate whole words: never mix English letters into a word of the native script.
+- Use only the ${language} script. Never use letters or words from another Indian language or from Urdu/Hindi, unless the English text itself contains them.
 Return exactly one translation per input, in the same order.`;
 
 /** Translates English texts into `lang` (cached); null where a text could not be translated. */
 export type Translate = (lang: string, texts: string[], urgent?: boolean) => Promise<Array<string | null>>;
 
 export function createTranslator(generate: Generate): Translate {
-  const translateBatch = async (lang: string, texts: string[]) => {
+  const translateBatch = async (lang: string, texts: string[], retry = false): Promise<void> => {
     const res = await generate(
       {
         contents: [{ role: 'user', parts: [{ text: JSON.stringify(texts) }] }],
@@ -105,10 +108,18 @@ export function createTranslator(generate: Generate): Translate {
     const out = JSON.parse(res.text || '[]');
     if (!Array.isArray(out) || out.length !== texts.length) throw new Error('Translation count mismatch');
     const cache = cacheFor(lang);
+    const mixed: string[] = [];
     texts.forEach((t, i) => {
-      if (typeof out[i] === 'string' && out[i].trim()) cache[t] = out[i];
+      if (typeof out[i] !== 'string' || !out[i].trim()) return;
+      // Never keep a translation that slips in another language's letters
+      if (mixesScripts(out[i], lang as LanguageCode, t)) mixed.push(t);
+      else cache[t] = out[i];
     });
     scheduleSave(lang);
+    if (mixed.length && !retry) {
+      console.warn(`Translation to ${lang}: ${mixed.length} mixed-script result(s), asking again`);
+      await translateBatch(lang, mixed, true);
+    }
   };
 
   return async (lang, texts, urgent = false) => {

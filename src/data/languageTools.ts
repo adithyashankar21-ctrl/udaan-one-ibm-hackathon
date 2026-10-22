@@ -97,6 +97,30 @@ export function spokenDigits(text: string): string | null {
   return spoken >= 3 ? out : null;
 }
 
+/** The letters of each script (the full stop । is shared, so it is left out of Devanagari). */
+const SCRIPT_LETTERS: Record<string, RegExp> = {
+  deva: /[\u0900-\u0963\u0966-\u097F]/,
+  beng: /[\u0980-\u09FF]/,
+  guru: /[\u0A00-\u0A7F]/,
+  gujr: /[\u0A80-\u0AFF]/,
+  orya: /[\u0B00-\u0B7F]/,
+  taml: /[\u0B80-\u0BFF]/,
+  telu: /[\u0C00-\u0C7F]/,
+  knda: /[\u0C80-\u0CFF]/,
+  mlym: /[\u0D00-\u0D7F]/,
+  arab: /[\u0600-\u06FF]/,
+};
+const SCRIPT_OF: Record<LanguageCode, string> = { en: '', hi: 'deva', mr: 'deva', bn: 'beng', pa: 'guru', gu: 'gujr', or: 'orya', ta: 'taml', te: 'telu', kn: 'knda', ml: 'mlym', ur: 'arab' };
+
+/**
+ * True when a translation into `lang` uses letters of another Indian script (or Urdu) that the
+ * original did not have — for example a Hindi word inside Kannada. Language names written in
+ * their own script in the original (a language menu) are allowed.
+ */
+export function mixesScripts(translation: string, lang: LanguageCode, original = ''): boolean {
+  return Object.entries(SCRIPT_LETTERS).some(([script, re]) => script !== SCRIPT_OF[lang] && re.test(translation) && !re.test(original));
+}
+
 /** Said when the AI service cannot be reached. */
 export const OFFLINE_REPLIES: Record<LanguageCode, string> = {
   en: 'Sorry, I could not reach the AI service just now. Please try again in a moment. Meanwhile, you can browse schemes with official links under "Find Schemes", or call the toll-free helpline 1800-11-2529.',

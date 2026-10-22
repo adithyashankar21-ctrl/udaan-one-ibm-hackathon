@@ -6,7 +6,13 @@ import type { LanguageCode } from '../types';
  * this browser, so each string is fetched once.
  */
 
-const STORE_KEY = (lang: string) => `udaan.i18n.${lang}`;
+// v2: earlier copies could hold translations that mixed in another language's letters
+const STORE_KEY = (lang: string) => `udaan.i18n.v2.${lang}`;
+try {
+  Object.keys(localStorage)
+    .filter((k) => /^udaan\.i18n\.[a-z]{2}$/.test(k))
+    .forEach((k) => localStorage.removeItem(k));
+} catch {}
 const memory = new Map<string, Map<string, string>>();
 const queue = new Map<string, Map<string, Array<(v: string | null) => void>>>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();

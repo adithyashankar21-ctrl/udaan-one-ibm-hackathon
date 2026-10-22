@@ -59,7 +59,7 @@ export const DistrictExplorer: React.FC<DistrictExplorerProps> = ({
               </span>
             </div>
             <h2 className="text-2xl font-black text-white">
-              जिला स्तरीय आर्थिक क्लस्टर एवं आजीविका मैपिंग (District Clusters)
+              District economic clusters and livelihood mapping
             </h2>
             <p className="text-sm text-slate-300 mt-1 max-w-2xl">
               Under PM-AJAY GIA, skilling programs are specifically aligned with district-specific industrial hubs, GI-tagged artisan clusters, and local supply chains.
@@ -142,7 +142,7 @@ export const DistrictExplorer: React.FC<DistrictExplorerProps> = ({
                 {/* Traditional SC Crafts */}
                 <div className="mt-3">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                    पारंपरिक शिल्प व चर्म/हस्तकला (Traditional Crafts):
+                    Traditional crafts, leather and handicrafts:
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {item.traditionalCrafts.map((craft, cIdx) => (
@@ -160,7 +160,7 @@ export const DistrictExplorer: React.FC<DistrictExplorerProps> = ({
                 <div className="mt-4">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5 flex items-center gap-1">
                     <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>उभरते उद्योग एवं मांग (Growing Market Demand):</span>
+                    <span>Growing industries and market demand:</span>
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {item.growingIndustries.map((ind, iIdx) => (

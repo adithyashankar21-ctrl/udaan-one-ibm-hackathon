@@ -7,6 +7,7 @@ import {
   FileText,
   Globe2,
   Home,
+  IndianRupee,
   LogOut,
   LayoutGrid,
   Compass,
@@ -122,6 +123,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
   const section = SECTION_OF[current] || current;
   const primary: Array<{ id: ChannelMode; label: string; icon: React.ElementType }> = [
     { id: 'schemes', label: t.nav.schemes, icon: Compass },
+    { id: 'loans', label: t.nav.loans, icon: IndianRupee },
     { id: 'skills', label: t.nav.skills, icon: Sparkles },
     { id: 'smart_apply', label: t.nav.apply, icon: ScanLine },
     { id: 'applications', label: t.nav.applications, icon: ClipboardList },

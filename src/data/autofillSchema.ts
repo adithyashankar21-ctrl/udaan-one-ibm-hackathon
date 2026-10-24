@@ -6,6 +6,7 @@
  * Official forms differ by State and change over time, so every schema points to the
  * official portal, and users can upload the official form PDF to have it filled directly.
  */
+import { lenderOptions } from './loanCatalog';
 
 export type FieldType =
   | 'text'
@@ -224,8 +225,8 @@ export interface SchemeFormSchema {
   optionalDocs: DocKind[];
   /** Proof-based requirements; when absent they are derived from requiredDocs/optionalDocs. */
   requirements?: Requirement[];
-  /** 'scheme' = benefit/loan/skilling scheme; 'document' = official document or certificate service. */
-  kind?: 'scheme' | 'document';
+  /** 'scheme' = benefit/skilling scheme; 'document' = official document or certificate service; 'loan' = loan product. */
+  kind?: 'scheme' | 'document' | 'loan';
   /** Name of the official form, when it has one (e.g. "Form 49A"). */
   officialForm?: string;
   /** Words that suggest a person wants this scheme (any language). */
@@ -275,6 +276,14 @@ const ask = (
 ): FormFieldSpec => ({ key, label, type, question, required: true, section: PROPOSAL, ...opts });
 
 const YES_NO = ['Yes', 'No'];
+
+const LOAN = 'Loan requested';
+const WORK = 'Work & income';
+/** Which bank or lender the person will take the loan from (printed on the PDF). */
+const lenderField = (loanId: string): FormFieldSpec =>
+  ask('lender', 'Lender you are applying to', 'select', 'Which bank or lender do you want to apply to? You can also say "not decided".', { section: LOAN, options: lenderOptions(loanId) });
+const tenureField = (): FormFieldSpec =>
+  ask('tenureMonths', 'Repayment period (months)', 'number', 'In how many months do you want to repay the loan? For example 12, 36 or 60.', { section: LOAN });
 
 export const VISHWAKARMA_TRADES = [
   'Carpenter (Suthar)',
@@ -401,7 +410,7 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
     submission: { mode: 'bank', where: 'Any bank branch, NBFC or MFI — or the JanSamarth portal', url: 'https://www.mudra.org.in', integration: 'none' },
     requiredDocs: ['aadhaar', 'pan', 'bank'],
     optionalDocs: ['residence', 'caste'],
-    keywords: ['mudra', 'मुद्रा', 'loan', 'लोन', 'ऋण', 'கடன்', 'రుణం', 'ಸಾಲ', 'വായ്പ'],
+    keywords: ['mudra', 'मुद्रा', 'मुद्रा लोन', 'shishu', 'kishore loan', 'tarun loan', 'tarun plus', 'शिशु लोन', 'முத்ரா', 'ముద్ర', 'ಮುದ್ರಾ', 'മുദ്ര'],
     fields: [
       ...identity(),
       ...address(),
@@ -412,6 +421,8 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('businessStatus', 'New or existing business', 'select', 'Is this a new business or one you already run?', { options: ['New business', 'Existing business'] }),
       ask('loanCategory', 'MUDRA category', 'select', 'Which loan size: Shishu (small), Kishore (medium) or Tarun (larger)?', { options: ['Shishu', 'Kishore', 'Tarun', 'Tarun Plus'] }),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
+      { ...tenureField(), section: PROPOSAL },
+      { ...lenderField('mudra'), section: PROPOSAL },
       ask('businessAddress', 'Business address', 'text', 'Where is your business, or where will it be? Say "same as home" if it is at home.'),
       ask('yearsInBusiness', 'Years the business has run', 'number', 'For how many years has the business been running? Say 0 for a new business.', { required: false }),
       ask('monthlyTurnover', 'Monthly sales (₹)', 'money', 'Roughly how much does the business sell in a month? Say 0 for a new business.', { required: false }),
@@ -438,6 +449,7 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('projectCost', 'Estimated project cost (₹)', 'money', 'Roughly how much will the project cost, in rupees?'),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
       ask('ownContribution', 'Your own contribution (₹)', 'money', 'How much of your own money can you put into the project? Say 0 if none.', { required: false }),
+      { ...tenureField(), section: PROPOSAL },
       ask('experienceYears', 'Experience in this activity (years)', 'number', 'How many years have you worked in this kind of activity? Say 0 if you are new to it.'),
       ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a bank or corporation loan (been a defaulter)?', { options: YES_NO }),
       p('occupation', PROPOSAL),
@@ -463,6 +475,8 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
       ask('ownershipShare', 'Your share of ownership (%)', 'number', 'What percentage of the business will be owned by you (or by SC/ST or women owners together)?', { help: 'At least 51% must be held by SC/ST or women entrepreneurs.' }),
       ask('projectCost', 'Estimated project cost (₹)', 'money', 'Roughly how much will the project cost, in rupees?'),
       ask('loanAmount', 'Loan amount needed (₹)', 'money', 'How much loan do you need, in rupees?'),
+      { ...tenureField(), section: PROPOSAL },
+      { ...lenderField('stand-up-india'), section: PROPOSAL },
       ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a bank loan (been a defaulter)?', { options: YES_NO }),
       ...bank(),
     ],
@@ -521,7 +535,7 @@ export const FORM_SCHEMAS: SchemeFormSchema[] = [
   },
 ];
 
-FORM_SCHEMAS.push(...DOCUMENT_FORM_SCHEMAS());
+FORM_SCHEMAS.push(...DOCUMENT_FORM_SCHEMAS(), ...LOAN_FORM_SCHEMAS());
 
 export const FORM_SCHEMA_MAP: Record<string, SchemeFormSchema> = Object.fromEntries(FORM_SCHEMAS.map((s) => [s.schemeId, s]));
 
@@ -1055,6 +1069,479 @@ function DOCUMENT_FORM_SCHEMAS(): SchemeFormSchema[] {
         p('mobile', ADDRESS),
         p('email', ADDRESS),
         { ...p('addressLine', ADDRESS), label: 'Present address' },
+      ],
+    }),
+  ];
+}
+
+/* ── Loans ────────────────────────────────────────────────────────────
+   Preparation schemas for loan applications. Fields follow what banks, NBFCs and the
+   scheme portals commonly ask for; every lender adds its own KYC and credit checks. */
+function LOAN_FORM_SCHEMAS(): SchemeFormSchema[] {
+  const loan = (s: Omit<SchemeFormSchema, 'kind'>): SchemeFormSchema => ({ ...s, kind: 'loan' });
+  const BUSINESS = 'Business details';
+  const STUDY = 'Course & institution';
+  const PROPERTY = 'House & property';
+  const GROUP = 'Self-help group';
+  const FARM = 'Farm & activity';
+  const GOLD = 'Gold pledged';
+
+  const purpose = (question: string, options?: string[]) =>
+    ask('loanPurpose', 'Purpose of the loan', options ? 'select' : 'text', question, { section: LOAN, ...(options ? { options } : {}) });
+  const amount = (question = 'How much loan do you need, in rupees?') => ask('loanAmount', 'Loan amount needed (₹)', 'money', question, { section: LOAN });
+  const monthlyIncome = (required = true) =>
+    ask('monthlyIncome', 'Monthly income (₹)', 'money', 'Roughly how much do you (or your household) earn in a month, in rupees?', { section: WORK, required });
+  const existingEmi = () =>
+    ask('existingEmi', 'EMIs already paid each month (₹)', 'money', 'How much do you already pay every month for other loans? Say 0 if none.', { section: WORK });
+  const noDefault = () =>
+    ask('loanDefault', 'Ever defaulted on a loan', 'select', 'Have you ever failed to repay a loan (been a defaulter)?', { section: WORK, options: YES_NO, help: 'Lenders check this with the credit bureau.' });
+  const employment = () =>
+    ask('employmentType', 'Type of work', 'select', 'Are you salaried, self-employed, a farmer, or something else?', { section: WORK, options: ['Salaried', 'Self-employed / business', 'Farmer', 'Daily wage worker', 'Other'] });
+  const ownContribution = () =>
+    ask('ownContribution', 'Your own contribution (₹)', 'money', 'How much of your own money can you put in? Say 0 if none.', { section: LOAN, required: false });
+  const projectCost = () => ask('projectCost', 'Total project cost (₹)', 'money', 'Roughly how much will the whole project cost, in rupees? Use the quotation if you have one.', { section: LOAN });
+  const business = (): FormFieldSpec[] => [
+    ask('businessName', 'Business name', 'text', 'What is the name of your business? Say "none" if it has no name yet.', { section: BUSINESS }),
+    ask('businessActivity', 'Business activity', 'text', 'What does the business do or sell?', { section: BUSINESS }),
+    ask('businessStatus', 'New or existing business', 'select', 'Is this a new business or one you already run?', { section: BUSINESS, options: ['New business', 'Existing business'] }),
+    ask('yearsInBusiness', 'Years the business has run', 'number', 'For how many years has the business been running? Say 0 for a new business.', { section: BUSINESS }),
+    ask('annualTurnover', 'Yearly sales / turnover (₹)', 'money', 'Roughly how much does the business sell in a year, in rupees? Say 0 for a new business.', { section: BUSINESS }),
+    ask('udyamNumber', 'Udyam registration number', 'text', 'What is your Udyam registration number? Say "none" if you do not have one.', { section: BUSINESS, required: false }),
+    ask('businessAddress', 'Business address', 'text', 'Where is the business, or where will it be? Say "same as home" if it is at home.', { section: BUSINESS }),
+  ];
+  const corporation = (groupField: FormFieldSpec): FormFieldSpec[] => [
+    ...identity(),
+    ...address(),
+    groupField,
+    p('annualFamilyIncome', SOCIAL),
+    p('incomeCertificateNumber', SOCIAL, false),
+    p('occupation', WORK),
+    ask('proposedActivity', 'Proposed activity / business', 'text', 'What activity or business do you want the loan for?', { section: LOAN }),
+    projectCost(),
+    amount(),
+    ownContribution(),
+    tenureField(),
+    ask('experienceYears', 'Experience in this activity (years)', 'number', 'How many years have you worked in this kind of activity? Say 0 if you are new to it.', { section: WORK }),
+    noDefault(),
+    ...bank(),
+  ];
+  const coBorrower = (): FormFieldSpec[] => [
+    ask('coBorrowerName', 'Co-borrower (parent / guardian) name', 'text', 'What is the name of your parent or guardian who will be the co-borrower?', { section: WORK }),
+    ask('coBorrowerRelation', 'Co-borrower relation', 'select', 'How is the co-borrower related to you?', { section: WORK, options: ['Father', 'Mother', 'Guardian', 'Spouse', 'Sibling'] }),
+    ask('coBorrowerIncome', 'Co-borrower monthly income (₹)', 'money', 'How much does the co-borrower earn in a month, in rupees?', { section: WORK }),
+  ];
+  const study = (extra: FormFieldSpec[] = []): FormFieldSpec[] => [
+    p('education', STUDY),
+    ask('institution', 'College / institution name', 'text', 'Which college, university or school have you got admission in?', { section: STUDY }),
+    ask('course', 'Course', 'text', 'Which course will you study?', { section: STUDY }),
+    ask('courseYears', 'Course length (years)', 'number', 'How many years is the course?', { section: STUDY }),
+    ...extra,
+    ask('annualFees', 'Yearly fee (₹)', 'money', 'How much is the yearly fee, in rupees?', { section: STUDY }),
+    ask('totalCourseCost', 'Total cost incl. hostel, books, travel (₹)', 'money', 'What is the total cost of the course, including hostel, books and travel, in rupees?', { section: STUDY }),
+  ];
+
+  return [
+    loan({
+      schemeId: 'loan-pmegp',
+      formTitle: 'PMEGP — loan with subsidy, application details',
+      basis: 'PMEGP applications are made on the KVIC PMEGP e-portal and sent to the bank you choose. These are the details the portal and banks ask for.',
+      submission: { mode: 'portal', where: 'KVIC PMEGP e-portal, then the bank branch you choose', url: 'https://www.kviconline.gov.in/pmegpeportal/', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: ['caste', 'education', 'residence'],
+      keywords: ['pmegp', 'employment generation programme', 'employment generation program', 'kvic', 'margin money', 'पीएमईजीपी', 'रोजगार सृजन'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        p('socialCategory', SOCIAL),
+        p('education', SOCIAL),
+        ask('specialCategory', 'Special category (higher subsidy)', 'select', 'Do you belong to a special category: SC, ST, OBC, minority, woman, ex-serviceman, person with disability, or North-East / hill area? Say "none" if not.', {
+          section: SOCIAL,
+          options: ['None (general)', 'SC', 'ST', 'OBC', 'Minority', 'Woman', 'Ex-serviceman', 'Person with disability', 'North-East / hill / border area'],
+        }),
+        ask('unitType', 'Type of unit', 'select', 'Will the unit make goods (manufacturing) or provide a service or business?', { section: LOAN, options: ['Manufacturing', 'Service / business'] }),
+        ask('unitArea', 'Unit location', 'select', 'Will the unit be in a village (rural) or a town or city (urban)?', { section: LOAN, options: ['Rural', 'Urban'], help: 'Rural units get a higher subsidy.' }),
+        ask('proposedActivity', 'Proposed activity', 'text', 'What will the unit make or do?', { section: LOAN }),
+        projectCost(),
+        amount(),
+        ownContribution(),
+        tenureField(),
+        ask('jobsCreated', 'People to be employed', 'number', 'How many people will work in the unit, including you?', { section: LOAN }),
+        lenderField('loan-pmegp'),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-cgtmse',
+      formTitle: 'Collateral-free MSME loan (CGTMSE) — application details',
+      basis: 'You apply to a bank or NBFC that is a CGTMSE member; the lender takes the guarantee. These are the details lenders commonly ask for.',
+      submission: { mode: 'bank', where: 'Any CGTMSE member bank or NBFC branch', url: 'https://www.cgtmse.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: ['residence'],
+      keywords: ['cgtmse', 'collateral free', 'collateral-free', 'without collateral', 'msme loan', 'udyam loan', 'बिना गारंटी', 'बिना गिरवी'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        ...business(),
+        purpose('What is the loan for: working capital, machines, expanding, or a new unit?', ['Working capital', 'Machinery / equipment', 'Expansion', 'New unit']),
+        amount(),
+        tenureField(),
+        lenderField('loan-cgtmse'),
+        existingEmi(),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-business',
+      formTitle: 'Business loan (bank / NBFC) — application details',
+      basis: 'Banks and NBFCs each have their own form. These are the details they commonly ask for; they also check your credit score.',
+      submission: { mode: 'bank', where: 'The bank or NBFC you choose (branch or official app)', url: 'https://sachet.rbi.org.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: ['residence', 'utility'],
+      keywords: ['business loan', 'working capital loan', 'shop loan', 'बिजनेस लोन', 'व्यापार लोन', 'व्यवसाय ऋण', 'दुकान के लिए लोन', 'தொழில் கடன்', 'వ్యాపార రుణం', 'ವ್ಯಾಪಾರ ಸಾಲ', 'ബിസിനസ് വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        ...business(),
+        purpose('What is the loan for: stock, machines, expanding, or something else?', ['Working capital / stock', 'Machinery / equipment', 'Expansion', 'Other']),
+        amount(),
+        tenureField(),
+        lenderField('loan-business'),
+        monthlyIncome(),
+        existingEmi(),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-svanidhi',
+      formTitle: 'PM SVANidhi — street vendor loan, application details',
+      basis: 'PM SVANidhi applications are made on the official portal, at a CSC or a bank. These are the details the application asks for.',
+      submission: { mode: 'portal', where: 'PM SVANidhi portal, a Common Service Centre or a bank branch', url: 'https://pmsvanidhi.mohua.gov.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'bank'],
+      optionalDocs: ['voter', 'ration'],
+      keywords: ['svanidhi', 'swanidhi', 'street vendor', 'street vendors', 'hawker', 'thela', 'रेहड़ी', 'ठेला', 'ठेले', 'फेरीवाला', 'पटरी', 'स्वनिधि', 'தெருவோர', 'వీధి వ్యాపారి', 'ಬೀದಿ ವ್ಯಾಪಾರಿ', 'തെരുവ് കച്ചവട'],
+      fields: [
+        ...identity(),
+        ...address(),
+        ask('vendingProof', 'Vending proof', 'select', 'Do you have a certificate of vending, a vendor ID card, or a letter of recommendation from the municipality?', {
+          section: BUSINESS,
+          options: ['Certificate of vending', 'Vendor ID card', 'Letter of recommendation', 'None yet'],
+        }),
+        ask('vendingProofNumber', 'Vending certificate / ID number', 'text', 'What is the number on your vending certificate or ID? Say "none" if you do not have one.', { section: BUSINESS, required: false }),
+        ask('vendingGoods', 'What you sell', 'select', 'What do you sell?', { section: BUSINESS, options: ['Vegetables / fruit', 'Food / snacks / tea', 'Clothes / goods', 'Services (repair, cobbler, barber)', 'Other'] }),
+        ask('vendingPlace', 'Where you vend', 'text', 'Where do you set up to sell (market or street name)?', { section: BUSINESS }),
+        ask('cityBody', 'Town / city municipality', 'text', 'Which town or city municipality do you vend in?', { section: BUSINESS }),
+        ask('loanTranche', 'Which loan', 'select', 'Is this your first, second or third SVANidhi loan?', { section: LOAN, options: ['First — ₹15,000', 'Second — ₹25,000', 'Third — ₹50,000'] }),
+        lenderField('loan-svanidhi'),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-microfinance',
+      formTitle: 'Microfinance loan — application details',
+      basis: 'Microfinance lenders collect these details at the group meeting or branch, and check that all your loan repayments stay under half your household income.',
+      submission: { mode: 'bank', where: 'The MFI or small finance bank branch / field officer', url: 'https://sachet.rbi.org.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'bank'],
+      optionalDocs: ['voter', 'ration', 'income'],
+      keywords: ['microfinance', 'micro finance', 'micro-finance', 'mfi', 'group loan', 'joint liability', 'माइक्रोफाइनेंस', 'समूह लोन'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('familySize', SOCIAL),
+        p('annualFamilyIncome', SOCIAL),
+        p('occupation', WORK),
+        monthlyIncome(),
+        existingEmi(),
+        purpose('What will you use the loan for?'),
+        amount(),
+        tenureField(),
+        ask('groupMember', 'Part of a lending group', 'select', 'Are you part of a women’s group or joint-liability group with this lender?', { section: LOAN, options: ['Yes', 'No', 'Want to join one'] }),
+        lenderField('loan-microfinance'),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-shg',
+      formTitle: 'Self-help group (SHG) bank loan — application details',
+      basis: 'The SHG applies together, with a group resolution, at its bank branch. These are the details banks ask for under DAY-NRLM / DAY-NULM.',
+      submission: { mode: 'bank', where: 'The bank branch where the SHG has its savings account', url: 'https://aajeevika.gov.in', integration: 'none' },
+      requiredDocs: ['aadhaar'],
+      optionalDocs: ['bank'],
+      requirements: [
+        { ...PROOF.identity(), label: 'Identity of the office-bearer filling this' },
+        { id: 'shg-docs', label: 'SHG resolution, savings passbook and meeting register', labelHi: 'समूह का प्रस्ताव, बचत पासबुक और बैठक रजिस्टर', anyOf: [], required: true, manual: true, note: 'Bring the group resolution to borrow, the SHG savings passbook and the books.' },
+      ],
+      keywords: ['shg', 'self help group', 'self-help group', 'nrlm', 'nulm', 'aajeevika', 'स्वयं सहायता समूह', 'महिला समूह', 'आजीविका', 'சுய உதவிக் குழு', 'స్వయం సహాయక', 'ಸ್ವಸಹಾಯ', 'കുടുംബശ്രീ'],
+      fields: [
+        p('fullName', IDENTITY),
+        p('aadhaar', IDENTITY),
+        p('mobile', ADDRESS),
+        p('addressLine', ADDRESS),
+        p('district', ADDRESS),
+        p('state', ADDRESS),
+        p('pincode', ADDRESS),
+        ask('shgName', 'SHG name', 'text', 'What is the name of your self-help group?', { section: GROUP }),
+        ask('shgRole', 'Your role in the group', 'select', 'What is your role in the group?', { section: GROUP, options: ['President', 'Secretary', 'Treasurer', 'Member'] }),
+        ask('shgMembers', 'Number of members', 'number', 'How many members does the group have?', { section: GROUP }),
+        ask('shgSince', 'Year the group started', 'number', 'In which year did the group start?', { section: GROUP }),
+        ask('shgSavings', 'Total group savings (₹)', 'money', 'How much has the group saved in total, in rupees?', { section: GROUP }),
+        ask('shgMission', 'Linked to a livelihood mission', 'select', 'Is the group linked to the rural (NRLM) or urban (NULM) livelihood mission?', { section: GROUP, options: ['DAY-NRLM (rural)', 'DAY-NULM (urban)', 'Not linked', 'Not sure'] }),
+        ask('shgGrade', 'Bank grading', 'select', 'Has the bank graded the group? If yes, which grade?', { section: GROUP, options: ['A', 'B', 'C', 'Not graded yet'] }),
+        ask('shgAccount', 'SHG savings account number', 'account', 'What is the group’s savings account number?', { section: GROUP }),
+        purpose('What will the group use the loan for?'),
+        amount('How much loan does the group need, in rupees?'),
+        tenureField(),
+        lenderField('loan-shg'),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-kcc',
+      formTitle: 'Kisan Credit Card — application details',
+      basis: 'KCC is applied for with a one-page form at any bank (also on the PM-Kisan site). These are the details the form asks for.',
+      submission: { mode: 'bank', where: 'Any commercial, regional rural or co-operative bank branch', url: 'https://pmkisan.gov.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'bank'],
+      optionalDocs: ['residence'],
+      requirements: [
+        PROOF.identity(),
+        PROOF.address(),
+        { id: 'land', label: 'Land record, lease or cultivation proof', labelHi: 'ज़मीन का रिकॉर्ड / पट्टा', anyOf: [], required: true, manual: true, note: 'Khatauni / RoR / patta, or a lease. Dairy and fisheries: proof of animals, pond or boat.' },
+        PROOF.photo(),
+      ],
+      keywords: ['kisan credit', 'kcc', 'crop loan', 'farm loan', 'farmer loan', 'agriculture loan', 'agri loan', 'dairy loan', 'fisheries loan', 'किसान क्रेडिट', 'केसीसी', 'फसल लोन', 'फसल ऋण', 'खेती के लिए लोन', 'कृषि ऋण', 'पशुपालन लोन', 'விவசாய கடன்', 'பயிர் கடன்', 'పంట రుణం', 'ವ್ಯವಸಾಯ ಸಾಲ', 'ಬೆಳೆ ಸಾಲ', 'കാർഷിക വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(),
+        ask('farmerType', 'You are a', 'select', 'Are you a land owner, tenant, sharecropper, or in dairy, poultry or fishing?', {
+          section: FARM,
+          options: ['Land owner farmer', 'Tenant / lease farmer', 'Sharecropper', 'Dairy / poultry / animal keeper', 'Fisher'],
+        }),
+        ask('landArea', 'Land cultivated (acres)', 'number', 'How many acres do you cultivate? Say 0 if you have no land.', { section: FARM }),
+        ask('landRecord', 'Survey / khasra number', 'text', 'What is the survey or khasra number of the land? Say "none" if not applicable.', { section: FARM, required: false }),
+        ask('crops', 'Crops grown / animals kept', 'text', 'Which crops do you grow, or which animals or fish do you keep?', { section: FARM }),
+        ask('pmKisan', 'Getting PM-Kisan', 'select', 'Do you get PM-Kisan money?', { section: FARM, options: YES_NO }),
+        ask('existingKcc', 'Already have a KCC', 'select', 'Do you already have a Kisan Credit Card?', { section: FARM, options: YES_NO }),
+        amount('How much credit limit do you need for the year, in rupees?'),
+        lenderField('loan-kcc'),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-ahidf',
+      formTitle: 'AHIDF — animal husbandry infrastructure loan, application details',
+      basis: 'AHIDF applications are made on the official portal and sent to the bank you choose, with a detailed project report.',
+      submission: { mode: 'portal', where: 'AHIDF portal (udyamimitra), then the chosen bank', url: 'https://ahidf.udyamimitra.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: [],
+      keywords: ['ahidf', 'animal husbandry infrastructure', 'dairy plant', 'dairy processing', 'milk plant', 'feed plant', 'meat processing', 'डेयरी प्लांट', 'दूध प्लांट', 'पशु आहार'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        ask('entityType', 'Applying as', 'select', 'Are you applying as an individual, an MSME, a farmer producer organisation or a company?', {
+          section: BUSINESS,
+          options: ['Individual entrepreneur', 'MSME', 'Farmer producer organisation', 'Private company', 'Section 8 company'],
+        }),
+        ask('projectType', 'Project type', 'select', 'What will you set up?', { section: BUSINESS, options: ['Dairy processing', 'Meat processing', 'Animal feed plant', 'Breed improvement farm', 'Other'] }),
+        ask('proposedActivity', 'Project description', 'text', 'Describe the project in one line (for example, 5,000-litre milk chilling and packing unit).', { section: BUSINESS }),
+        projectCost(),
+        amount(),
+        ownContribution(),
+        tenureField(),
+        lenderField('loan-ahidf'),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-vidyalaxmi',
+      formTitle: 'PM-Vidyalaxmi — education loan, application details',
+      basis: 'PM-Vidyalaxmi uses one common education loan form on its portal, sent to up to three banks. These are the details it asks for.',
+      submission: { mode: 'portal', where: 'PM-Vidyalaxmi portal (choose up to 3 banks)', url: 'https://www.pmvidyalaxmi.co.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'education'],
+      optionalDocs: ['pan', 'income', 'bank'],
+      keywords: ['vidyalaxmi', 'vidya laxmi', 'vidyalakshmi', 'vidya lakshmi', 'pm vidyalaxmi', 'विद्यालक्ष्मी', 'विद्या लक्ष्मी'],
+      fields: [
+        ...identity(),
+        ...address(true),
+        p('panNumber', IDENTITY, false),
+        ...study([
+          ask('admissionType', 'How you got admission', 'select', 'Did you get admission on merit or an entrance exam, or through a management quota?', {
+            section: STUDY,
+            options: ['Merit / entrance exam', 'Management quota'],
+            help: 'PM-Vidyalaxmi is only for merit admissions to listed institutions.',
+          }),
+        ]),
+        p('annualFamilyIncome', SOCIAL),
+        p('incomeCertificateNumber', SOCIAL, false),
+        amount(),
+        ...coBorrower(),
+        lenderField('loan-vidyalaxmi'),
+        ...bank(false),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-education',
+      formTitle: 'Education loan (bank / NBFC) — application details',
+      basis: 'Each bank has its own form; you can also apply through JanSamarth or PM-Vidyalaxmi. These are the details lenders commonly ask for.',
+      submission: { mode: 'bank', where: 'The bank or NBFC you choose, or the JanSamarth portal', url: 'https://www.jansamarth.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'education'],
+      optionalDocs: ['pan', 'income', 'bank'],
+      keywords: ['education loan', 'student loan', 'study loan', 'loan for college', 'loan for studies', 'loan for school', 'study abroad loan', 'शिक्षा ऋण', 'एजुकेशन लोन', 'पढ़ाई के लिए लोन', 'கல்விக் கடன்', 'విద్యా రుణం', 'ಶಿಕ್ಷಣ ಸಾಲ', 'വിദ്യാഭ്യാസ വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(true),
+        p('panNumber', IDENTITY, false),
+        ...study([ask('studyWhere', 'Where you will study', 'select', 'Will you study in India, abroad, or is this for school?', { section: STUDY, options: ['India — college / university', 'Abroad', 'School'] })]),
+        p('annualFamilyIncome', SOCIAL),
+        amount(),
+        ask('collateral', 'Security you can offer', 'select', 'For a large loan, can you offer security like property or a fixed deposit?', { section: LOAN, options: ['None', 'Property', 'Fixed deposit / insurance policy', 'Not sure'] }),
+        ...coBorrower(),
+        lenderField('loan-education'),
+        ...bank(false),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-pmay-home',
+      formTitle: 'Home loan with PMAY-U 2.0 interest subsidy — application details',
+      basis: 'You apply for PMAY-U 2.0 on the official portal and take the home loan from a listed bank or housing finance company, which claims the subsidy.',
+      submission: { mode: 'portal', where: 'PMAY-U 2.0 portal, then a listed bank or housing finance company', url: 'https://pmay-urban.gov.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'income', 'bank'],
+      optionalDocs: ['residence'],
+      keywords: ['pmay', 'pmay-u', 'awas yojana', 'awas', 'home loan subsidy', 'housing subsidy', 'interest subsidy', 'प्रधानमंत्री आवास', 'आवास योजना', 'घर सब्सिडी', 'ஆவாஸ்', 'ఆవాస్', 'ಆವಾಸ್'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        p('annualFamilyIncome', SOCIAL),
+        ask('incomeGroup', 'Income group', 'select', 'Is your family income up to ₹3 lakh (EWS), ₹3–6 lakh (LIG) or ₹6–9 lakh (MIG) a year?', { section: SOCIAL, options: ['EWS (up to ₹3 lakh)', 'LIG (₹3–6 lakh)', 'MIG (₹6–9 lakh)'] }),
+        ask('ownsPuccaHouse', 'Family owns a pucca house anywhere in India', 'select', 'Does anyone in your family already own a pucca house anywhere in India?', { section: PROPERTY, options: YES_NO, help: 'The subsidy is only for families with no pucca house.' }),
+        ask('houseAction', 'What you will do', 'select', 'Will you buy a new house, buy a resale house, or build on your own plot?', { section: PROPERTY, options: ['Buy a new house / flat', 'Buy a resale house', 'Build on own plot'] }),
+        ask('propertyTown', 'Town / city of the house', 'text', 'In which town or city is the house?', { section: PROPERTY }),
+        ask('propertyValue', 'House value (₹)', 'money', 'What is the price or value of the house, in rupees?', { section: PROPERTY }),
+        ask('carpetArea', 'Carpet area (sq m)', 'number', 'What is the carpet area of the house in square metres?', { section: PROPERTY, help: 'Must be 120 sq m or less for the subsidy.' }),
+        ask('womanOwner', 'Woman owner / co-owner', 'select', 'Will a woman of the family be the owner or a co-owner?', { section: PROPERTY, options: YES_NO }),
+        amount(),
+        tenureField(),
+        lenderField('loan-pmay-home'),
+        employment(),
+        monthlyIncome(),
+        existingEmi(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-home',
+      formTitle: 'Home loan — application details',
+      basis: 'Each bank and housing finance company has its own form. These are the details they commonly ask for.',
+      submission: { mode: 'bank', where: 'The bank or housing finance company you choose', url: 'https://sachet.rbi.org.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: ['income'],
+      keywords: ['home loan', 'housing loan', 'house loan', 'loan for house', 'home repair loan', 'होम लोन', 'घर के लिए लोन', 'गृह ऋण', 'मकान लोन', 'मकान के लिए लोन', 'வீட்டுக் கடன்', 'గృహ రుణం', 'ಗೃಹ ಸಾಲ', 'ഭവന വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        ask('houseAction', 'What you will do', 'select', 'Will you buy, build, extend or repair a house?', { section: PROPERTY, options: ['Buy a new house / flat', 'Buy a resale house', 'Build on own plot', 'Extend / repair'] }),
+        ask('propertyTown', 'Town / city of the house', 'text', 'In which town or city is the house?', { section: PROPERTY }),
+        ask('propertyValue', 'House value or work cost (₹)', 'money', 'What is the price of the house, or the cost of the work, in rupees?', { section: PROPERTY }),
+        amount(),
+        tenureField(),
+        lenderField('loan-home'),
+        employment(),
+        monthlyIncome(),
+        existingEmi(),
+        noDefault(),
+        ...bank(),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-nbcfdc',
+      formTitle: 'NBCFDC term loan (Backward Classes) — application details',
+      basis: 'NBCFDC loans are applied for through the State Backward Classes Finance Corporation. These are the details commonly requested.',
+      submission: { mode: 'office', where: 'State Backward Classes Finance & Development Corporation', url: 'https://nbcfdc.gov.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'caste', 'income', 'bank'],
+      optionalDocs: ['residence'],
+      keywords: ['nbcfdc', 'backward classes finance', 'obc loan', 'loan for obc', 'पिछड़ा वर्ग लोन', 'ओबीसी लोन'],
+      fields: corporation({ ...p('socialCategory', SOCIAL), help: 'NBCFDC loans are for Backward Classes (OBC).' }),
+    }),
+    loan({
+      schemeId: 'loan-nskfdc',
+      formTitle: 'NSKFDC loan (Safai Karamcharis) — application details',
+      basis: 'NSKFDC loans are applied for through the State Channelising Agency. These are the details commonly requested.',
+      submission: { mode: 'office', where: 'State Channelising Agency for NSKFDC', url: 'https://nskfdc.nic.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'bank'],
+      optionalDocs: ['caste', 'income', 'residence'],
+      keywords: ['nskfdc', 'safai karamchari', 'safai karmachari', 'manual scavenger', 'sanitation worker', 'waste picker', 'सफाई कर्मचारी', 'सफाई कर्मी'],
+      fields: corporation(
+        ask('workerType', 'You are a', 'select', 'Are you a safai karamchari, a manual scavenger, a waste picker, or a dependent of one?', {
+          section: SOCIAL,
+          options: ['Safai karamchari', 'Manual scavenger', 'Waste picker', 'Dependent of one of these'],
+        })
+      ),
+    }),
+    loan({
+      schemeId: 'loan-nmdfc',
+      formTitle: 'NMDFC term loan (Minorities) — application details',
+      basis: 'NMDFC loans are applied for through the State Minorities Finance Corporation. These are the details commonly requested.',
+      submission: { mode: 'office', where: 'State Minorities Finance / Development Corporation', url: 'https://nmdfc.org', integration: 'none' },
+      requiredDocs: ['aadhaar', 'income', 'bank'],
+      optionalDocs: ['residence'],
+      keywords: ['nmdfc', 'minority loan', 'minorities finance', 'loan for minorities', 'अल्पसंख्यक लोन', 'अल्पसंख्यक ऋण'],
+      fields: corporation(
+        ask('minorityCommunity', 'Minority community', 'select', 'Which community do you belong to?', { section: SOCIAL, options: ['Muslim', 'Christian', 'Sikh', 'Buddhist', 'Jain', 'Parsi'] })
+      ),
+    }),
+    loan({
+      schemeId: 'loan-gold',
+      formTitle: 'Gold loan — application details',
+      basis: 'Gold loans are made at the branch after the gold is weighed and valued. These are the details lenders commonly ask for.',
+      submission: { mode: 'bank', where: 'The bank or gold-loan NBFC branch you choose (take the gold with you)', url: 'https://sachet.rbi.org.in', integration: 'none' },
+      requiredDocs: ['aadhaar'],
+      optionalDocs: ['pan', 'bank'],
+      keywords: ['gold loan', 'loan on gold', 'loan against gold', 'jewel loan', 'गोल्ड लोन', 'सोने पर लोन', 'सोना गिरवी', 'गहने पर लोन', 'நகைக் கடன்', 'தங்கக் கடன்', 'బంగారు రుణం', 'ಚಿನ್ನದ ಸಾಲ', 'സ്വർണ്ണ വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY, false),
+        ask('goldWeight', 'Gold weight (grams)', 'number', 'Roughly how many grams of gold jewellery will you pledge?', { section: GOLD }),
+        ask('goldPurity', 'Gold purity', 'select', 'What purity is the gold: 22, 20 or 18 carat?', { section: GOLD, options: ['24 carat', '22 carat', '20 carat', '18 carat', 'Not sure'] }),
+        purpose('What do you need the money for?'),
+        amount(),
+        ask('repaymentType', 'How you want to repay', 'select', 'Do you want to pay interest monthly and the loan at the end, or pay a fixed EMI?', { section: LOAN, options: ['Monthly interest, loan at the end', 'Fixed EMI', 'Not sure'] }),
+        tenureField(),
+        lenderField('loan-gold'),
+        ...bank(false),
+      ],
+    }),
+    loan({
+      schemeId: 'loan-personal',
+      formTitle: 'Personal loan — application details',
+      basis: 'Each bank and NBFC has its own form; they also check your credit score. These are the details they commonly ask for.',
+      submission: { mode: 'bank', where: 'The bank or RBI-registered NBFC you choose (branch or official app)', url: 'https://sachet.rbi.org.in', integration: 'none' },
+      requiredDocs: ['aadhaar', 'pan', 'bank'],
+      optionalDocs: ['income'],
+      keywords: ['personal loan', 'medical loan', 'wedding loan', 'marriage loan', 'पर्सनल लोन', 'व्यक्तिगत ऋण', 'शादी के लिए लोन', 'इलाज के लिए लोन', 'தனிநபர் கடன்', 'వ్యక్తిగత రుణం', 'ವೈಯಕ್ತಿಕ ಸಾಲ', 'വ്യക്തിഗത വായ്പ'],
+      fields: [
+        ...identity(),
+        ...address(),
+        p('panNumber', IDENTITY),
+        employment(),
+        ask('employerName', 'Employer / business name', 'text', 'Where do you work, or what is your business called?', { section: WORK }),
+        monthlyIncome(),
+        existingEmi(),
+        purpose('What is the loan for?', ['Medical', 'Wedding', 'Home repair', 'Education', 'Travel', 'Other']),
+        amount(),
+        tenureField(),
+        lenderField('loan-personal'),
+        noDefault(),
+        ...bank(),
       ],
     }),
   ];

@@ -5,6 +5,7 @@
 import type { BeneficiaryProfile } from '../types';
 import { authHeader } from './supabase';
 import type { ProfileKey } from '../data/autofillSchema';
+import type { LoanDetails } from '../data/loanCatalog';
 
 const BASE = '/api/autofill';
 
@@ -120,7 +121,7 @@ export interface SessionState {
 
 export interface SchemeInfo {
   schemeId: string;
-  kind: 'scheme' | 'document';
+  kind: 'scheme' | 'document' | 'loan';
   category?: string;
   officialForm?: string;
   online?: string;
@@ -138,6 +139,8 @@ export interface SchemeInfo {
   submission: { mode: string; where: string; url: string; integration: 'none' };
   requiredDocs: string[];
   optionalDocs: string[];
+  /** Amounts, rates and lenders, for loans and loan schemes. */
+  loan?: LoanDetails | null;
   eligibility?: { level: 'likely' | 'needs-info' | 'unlikely'; reasons: string[] };
 }
 

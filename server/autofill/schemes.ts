@@ -6,9 +6,10 @@ import { Type } from '@google/genai';
 import { FORM_SCHEMAS, FORM_SCHEMA_MAP } from '../../src/data/autofillSchema';
 import { SCHEME_CATALOG, estimateEligibility, rankSchemesForProfile } from '../../src/data/schemeCatalog';
 import { DOCUMENT_SERVICES } from '../../src/data/documentServices';
+import { LOAN_PRODUCTS, LOAN_WORDS, loanDetails } from '../../src/data/loanCatalog';
 
-/** Schemes and official document services share one lookup. */
-const ALL_ENTRIES = [...SCHEME_CATALOG, ...DOCUMENT_SERVICES];
+/** Schemes, official document services and loans share one lookup. */
+const ALL_ENTRIES = [...SCHEME_CATALOG, ...DOCUMENT_SERVICES, ...LOAN_PRODUCTS];
 const findEntry = (id: string) => ALL_ENTRIES.find((s) => s.id === id);
 import type { BeneficiaryProfile } from '../../src/types';
 import type { Generate } from './ocr';
@@ -43,6 +44,8 @@ export function schemeInfo(schemeId: string) {
     submission: schema.submission,
     requiredDocs: schema.requiredDocs,
     optionalDocs: schema.optionalDocs,
+    /** Amounts, rates and lenders, for loans and loan schemes. */
+    loan: loanDetails(schemeId),
   };
 }
 
@@ -56,7 +59,7 @@ export const listSchemes = () => FORM_SCHEMAS.map((s) => schemeInfo(s.schemeId)!
 const DOC_ACTION_WORDS =
   /\b(get|make|need|want|new|renew|update|correct|correction|change|issue|lost|duplicate|how|chahiye|chahie|banwana|banwani|banana|banani|convert)\b|बनवा|बनाना|चाहिए|अपडेट|बदल|सुधार|खो|வேண்டும்|மாற்ற|எப்படி|కావాలి|మార్చ|ఎలా|ಬೇಕು|ಬದಲ|ಹೇಗೆ|വേണം|മാറ്റ|എങ്ങനെ/i;
 
-export function detectIntentLocal(text: string): { wantsToApply: boolean; schemeId: string | null } {
+export function detectIntentLocal(text: string): { wantsToApply: boolean; schemeId: string | null; wantsLoan: boolean } {
   const t = (text || '').toLowerCase();
   let best: string | null = null;
   let bestLen = 0;
@@ -72,8 +75,10 @@ export function detectIntentLocal(text: string): { wantsToApply: boolean; scheme
     }
   }
   const isDocument = best ? FORM_SCHEMA_MAP[best]?.kind === 'document' : false;
-  const wantsToApply = APPLY_WORDS.test(t) || (isDocument && DOC_ACTION_WORDS.test(t));
-  return { wantsToApply, schemeId: best };
+  // "I need a loan", "मुझे लोन चाहिए": asking for a loan is asking to apply for one
+  const wantsLoan = LOAN_WORDS.test(t);
+  const wantsToApply = APPLY_WORDS.test(t) || ((isDocument || wantsLoan) && DOC_ACTION_WORDS.test(t));
+  return { wantsToApply, schemeId: best, wantsLoan };
 }
 
 /**
@@ -92,7 +97,7 @@ export async function detectIntent(generate: Generate, text: string) {
     const response = await generate(
       {
         contents: `A citizen in India said (any language): "${text.slice(0, 600)}"
-From the list below, choose the ONE government scheme or official document / certificate service that best matches what they need to apply for now, and up to 2 related items they will probably also need (for example, a scholarship usually also needs an income certificate and a caste certificate). Use "none" if nothing fits.${local.schemeId ? `\nA keyword match suggested: ${local.schemeId} — use it only if it truly fits.` : ''}
+From the list below, choose the ONE government scheme, loan, or official document / certificate service that best matches what they need to apply for now, and up to 2 related items they will probably also need (for example, a scholarship usually also needs an income certificate and a caste certificate; a bank loan need may also fit a cheaper government loan scheme). Use "none" if nothing fits.${local.schemeId ? `\nA keyword match suggested: ${local.schemeId} — use it only if it truly fits.` : ''}
 ${options}`,
         config: {
           responseMimeType: 'application/json',
@@ -116,7 +121,7 @@ ${options}`,
     const parsed = JSON.parse(response.text || '{}');
     const schemeId = FORM_SCHEMA_MAP[parsed.schemeId] ? parsed.schemeId : null;
     const related = (Array.isArray(parsed.related) ? parsed.related : []).filter((r: string) => FORM_SCHEMA_MAP[r] && r !== schemeId).slice(0, 2);
-    return { wantsToApply: local.wantsToApply || Boolean(parsed.wantsToApply), schemeId, related, matchedBy: 'ai' as const, reason: String(parsed.reason || '').slice(0, 300) };
+    return { wantsToApply: local.wantsToApply || Boolean(parsed.wantsToApply), wantsLoan: local.wantsLoan || FORM_SCHEMA_MAP[schemeId || '']?.kind === 'loan', schemeId, related, matchedBy: 'ai' as const, reason: String(parsed.reason || '').slice(0, 300) };
   } catch {
     // AI unavailable: fall back to the keyword result
     return { ...local, related: [] as string[], matchedBy: local.schemeId ? ('keywords' as const) : ('none' as const), reason: '' };

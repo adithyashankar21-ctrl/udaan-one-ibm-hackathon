@@ -516,6 +516,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
             </div>
           ) : (
             ([
+              ['loan', 'Loans'],
               ['document', 'Documents & certificates'],
               ['scheme', 'Government schemes'],
             ] as const).map(([kind, heading]) => (

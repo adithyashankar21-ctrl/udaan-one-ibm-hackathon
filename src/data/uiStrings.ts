@@ -1,7 +1,7 @@
 import { LanguageCode } from '../types';
 
 export interface ShellStrings {
-  nav: { home: string; schemes: string; skills: string; enterprise: string; applications: string; apply: string; assistant: string; more: string };
+  nav: { home: string; schemes: string; loans: string; skills: string; enterprise: string; applications: string; apply: string; assistant: string; more: string };
   hero: { eyebrow: string; title: string; subtitle: string; speakCta: string; exploreCta: string; capabilities: [string, string, string] };
   help: { title: string; scheme: string; document: string; business: string; jobs: string; eligibility: string; apply: string };
   orb: { idle: string; listening: string; processing: string; speaking: string; paused: string };
@@ -16,6 +16,7 @@ const en: ShellStrings = {
   nav: {
     home: 'Home',
     schemes: 'Explore Schemes',
+    loans: 'Loans',
     skills: 'Skills & Opportunities',
     enterprise: 'Start a business',
     applications: 'My Applications',
@@ -58,6 +59,7 @@ const hi: ShellStrings = {
   nav: {
     home: 'होम',
     schemes: 'योजनाएँ देखें',
+    loans: 'लोन',
     skills: 'कौशल और अवसर',
     enterprise: 'व्यवसाय शुरू करें',
     applications: 'मेरे आवेदन',
@@ -94,6 +96,7 @@ const ta: ShellStrings = {
   nav: {
     home: 'முகப்பு',
     schemes: 'திட்டங்கள்',
+    loans: 'கடன்கள்',
     skills: 'திறன் & வாய்ப்புகள்',
     enterprise: 'தொழில் தொடங்க',
     applications: 'என் விண்ணப்பங்கள்',
@@ -130,6 +133,7 @@ const te: ShellStrings = {
   nav: {
     home: 'హోమ్',
     schemes: 'పథకాలు',
+    loans: 'రుణాలు',
     skills: 'నైపుణ్యాలు & అవకాశాలు',
     enterprise: 'వ్యాపారం ప్రారంభించండి',
     applications: 'నా దరఖాస్తులు',
@@ -166,6 +170,7 @@ const kn: ShellStrings = {
   nav: {
     home: 'ಮುಖಪುಟ',
     schemes: 'ಯೋಜನೆಗಳು',
+    loans: 'ಸಾಲಗಳು',
     skills: 'ಕೌಶಲ್ಯ & ಅವಕಾಶಗಳು',
     enterprise: 'ವ್ಯಾಪಾರ ಆರಂಭಿಸಿ',
     applications: 'ನನ್ನ ಅರ್ಜಿಗಳು',
@@ -202,6 +207,7 @@ const ml: ShellStrings = {
   nav: {
     home: 'ഹോം',
     schemes: 'പദ്ധതികൾ',
+    loans: 'വായ്പകൾ',
     skills: 'നൈപുണ്യം & അവസരങ്ങൾ',
     enterprise: 'ബിസിനസ് തുടങ്ങാം',
     applications: 'എന്റെ അപേക്ഷകൾ',

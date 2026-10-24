@@ -4,6 +4,7 @@ import type { BeneficiaryProfile } from '../../types';
 import { type CatalogScheme, SCHEME_CATALOG, estimateEligibility } from '../../data/schemeCatalog';
 import { FORM_SCHEMA_MAP } from '../../data/autofillSchema';
 import { DOCUMENT_SERVICES } from '../../data/documentServices';
+import { LOAN_PRODUCTS } from '../../data/loanCatalog';
 import { StatusPill } from '../ui/kit';
 
 /** Distinctive names used to spot a scheme mentioned in an AI reply. */
@@ -30,10 +31,24 @@ const SCHEME_NAMES: Record<string, RegExp> = {
   'doc-eshram': /e-?Shram/i,
   'doc-udid': /\bUDID\b|disability certificate|Swavlamban/i,
   'doc-ration': /ration card|राशन कार्ड/i,
+  // Loans
+  'loan-pmegp': /PMEGP|Employment Generation Programme/i,
+  'loan-svanidhi': /SVANidhi|स्वनिधि/i,
+  'loan-kcc': /Kisan Credit Card|\bKCC\b|किसान क्रेडिट/i,
+  'loan-vidyalaxmi': /Vidya ?la(x|ksh)mi|विद्या ?लक्ष्मी/i,
+  'loan-pmay-home': /PMAY|Awas Yojana|आवास योजना/i,
+  'loan-cgtmse': /CGTMSE/i,
+  'loan-shg': /self[- ]help group|\bSHG\b|NRLM|स्वयं सहायता/i,
+  'loan-nbcfdc': /NBCFDC/i,
+  'loan-nskfdc': /NSKFDC/i,
+  'loan-nmdfc': /NMDFC/i,
+  'loan-ahidf': /AHIDF/i,
+  'loan-gold': /gold loan|गोल्ड लोन|सोने पर लोन/i,
+  'loan-microfinance': /micro ?finance|माइक्रोफाइनेंस/i,
 };
 
 export function schemesMentioned(text: string): CatalogScheme[] {
-  return [...SCHEME_CATALOG, ...DOCUMENT_SERVICES].filter((s) => SCHEME_NAMES[s.id]?.test(text)).slice(0, 3);
+  return [...SCHEME_CATALOG, ...DOCUMENT_SERVICES, ...LOAN_PRODUCTS].filter((s) => SCHEME_NAMES[s.id]?.test(text)).slice(0, 3);
 }
 
 const ELIG = {
@@ -56,7 +71,7 @@ export const SchemeResultCard: React.FC<{ scheme: CatalogScheme; profile: Benefi
     <article className="rounded-2xl border border-line bg-white p-4 shadow-card animate-fade-up">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <StatusPill tone="info" icon={BookOpenCheck}>{isDocument ? 'Official document service' : 'Scheme facts'} · official source linked</StatusPill>
+          <StatusPill tone="info" icon={BookOpenCheck}>{isDocument ? 'Official document service' : (scheme as any).kind === 'loan' ? 'Loan facts' : 'Scheme facts'} · official source linked</StatusPill>
           <h4 className="mt-2 font-bold leading-snug text-navy">{scheme.name}</h4>
           <p className="text-xs text-muted">{scheme.ministry}</p>
           {officialForm && <p className="mt-0.5 text-xs font-semibold text-teal-600">Official form: {officialForm}</p>}

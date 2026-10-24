@@ -7,6 +7,7 @@ export type ChannelMode =
   | 'applications'
   | 'smart_apply'
   | 'documents'
+  | 'loans'
   | 'unified_journey'
   | 'voice_studio'
   | 'kiosk'

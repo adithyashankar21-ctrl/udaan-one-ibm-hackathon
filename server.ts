@@ -13,6 +13,10 @@ import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languag
 import { detectLearnIntent } from './server/learn/intent';
 import { detectIntentLocal } from './server/autofill/schemes';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
+import { LOAN_LISTINGS } from './src/data/loanCatalog';
+
+/** One line per loan for the assistant: what it is, how much, at what rate, for whom. */
+const LOAN_FACTS = LOAN_LISTINGS.map((l) => `     • ${l.name}: ${l.amount.text}; interest ${l.rate}; ${l.collateral}${l.subsidy ? `; help: ${l.subsidy}` : ''}. Lenders: ${l.offers.map((o) => o.lender).join(', ')}.${l.statusNote ? ` NOTE: ${l.statusNote}` : ''}`).join('\n');
 
 dotenv.config();
 
@@ -155,7 +159,9 @@ app.post('/api/ai/chat', async (req, res) => {
   const applyNote = applyIntent
     ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one short sentence, ${
         !applyIntent.schemeId
-          ? 'ask which scheme or document they want to apply for.'
+          ? localIntent.wantsLoan
+            ? 'ask what the loan is for (business, farming or dairy, studies, a house, a self-help group, or quick money against gold) and how much they need, then name the one or two best-fitting loans from the loan list — cheaper government loan schemes first. Say UDAAN ONE can fill the loan application and compare banks.'
+            : 'ask which scheme, loan or document they want to apply for.'
           : /helpline|ivr|phone/i.test(String(channel))
             ? 'say you will now take their application details in this call, one question at a time.'
             : /voice|whatsapp|chat/i.test(String(channel))
@@ -193,11 +199,13 @@ RULES:
      • PM-AJAY (Ministry of Social Justice & Empowerment) supports SC individuals and households through grants for income-generating assets, skill development and village infrastructure, implemented by State governments. Applications usually go through the District Social Welfare Office or the State SC Development Corporation. Official site: pmajay.dosje.gov.in. Grant limits are set in the scheme guidelines — tell people to confirm the current limit with their district office.
      • PMKVY / Skill India: free short-term NSQF-aligned training and Recognition of Prior Learning (RPL) for people with existing skills (skillindiadigital.gov.in).
      • PM-DAKSH (MoSJE): free skill training for target groups including SCs (pmdaksh.dosje.gov.in).
-     • PM MUDRA Yojana: collateral-free loans — Shishu up to ₹50,000, Kishore ₹50,000 to ₹5 lakh, Tarun for larger amounts — via banks, NBFCs and MFIs (mudra.org.in).
+     • PM MUDRA Yojana: collateral-free loans — Shishu up to ₹50,000, Kishore ₹50,000 to ₹5 lakh, Tarun ₹5–10 lakh, Tarun Plus ₹10–20 lakh after repaying a Tarun loan — via banks, NBFCs and MFIs (mudra.org.in).
      • NSFDC (National Scheduled Castes Finance & Development Corporation): concessional loans for SC persons via State Channelising Agencies (nsfdc.nic.in).
      • PM Vishwakarma: for artisans in notified traditional trades — recognition, basic training with stipend, toolkit incentive and collateral-free credit at concessional interest; register through a CSC (pmvishwakarma.gov.in).
-     • Stand-Up India: bank loans of ₹10 lakh to ₹1 crore for SC/ST and women entrepreneurs starting a new enterprise.
+     • Stand-Up India: bank loans of ₹10 lakh to ₹1 crore for SC/ST and women entrepreneurs starting a new enterprise (the original scheme closed to new loans on 31 March 2025; a revamped version was announced in 2026 — tell people to confirm current terms at their bank).
      • Common documents: Aadhaar, caste certificate, income certificate, bank passbook, photograph.
+     • LOANS — UDAAN ONE has a Loans page that compares government loan schemes, banks, NBFCs and microfinance lenders, and its Smart Apply fills the loan application and makes a PDF that names the loan and the lender. Always suggest the cheapest suitable government-backed loan before a costly private loan, never promise approval or a rate (rates are indicative, checked October 2026; the lender decides), warn against unregistered loan apps, and say total EMIs should stay well under half of monthly income. Loans it knows:
+${LOAN_FACTS}
      • Official documents and certificates (UDAAN ONE's Smart Apply can prepare these and tell people which proofs are accepted): PAN — instant e-PAN with Aadhaar on incometax.gov.in, or Form 49A via Protean / UTIITSL (Aadhaar alone can serve as proof of identity, address and date of birth); voter ID — Form 6 on voters.eci.gov.in, needing proof of age, proof of address and a photo (Form 8 for corrections); passport — apply on passportindia.gov.in then attend a Passport Seva Kendra with proof of present address and proof of date of birth; Aadhaar address update — myaadhaar.uidai.gov.in, other updates at an Aadhaar centre; income, caste and residence certificates — State e-District portal, a CSC or the Tahsildar office; birth certificate — local Registrar or crsorgi.gov.in; learner's driving licence — sarathi.parivahan.gov.in; e-Shram card — eshram.gov.in; UDID disability card — swavlambancard.gov.in; ration card — the State food department (links on nfsa.gov.in). Fees, timelines and accepted documents are set by the issuing authority — tell people to confirm on the official portal.
    - For local offices, name the type of office (District Social Welfare Office, State SC Development Corporation, nearest Skill India centre, CSC) rather than inventing addresses or phone numbers. The UDAAN ONE helpline is 1800-11-2529.
 3. PERSONALISE: if the person shares their name, trade or district, use it and give 1–2 concrete next steps for their situation.

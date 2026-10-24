@@ -24,6 +24,7 @@ import {
   rectangle,
   rgb,
 } from 'pdf-lib';
+import { LENDER_TYPE_LABEL, emi, formatRupees, rateFor } from '../../src/data/loanCatalog';
 import type { Generate } from './ocr';
 import type { DraftView, FieldView } from './mapping';
 import type { ApplicantPhoto, OfficialForm, Placement } from './types';
@@ -164,6 +165,54 @@ export async function generateDraftPdf(view: DraftView, opts: { aadhaarFull?: st
   text(`Status: ${view.approved ? 'Approved by applicant' : 'Not yet approved'}`, 400, 8.5, bold, MUTED);
   y -= 20;
 
+  // Loans: which loan, from which lender, and what it may cost
+  const loan = view.scheme?.loan;
+  const valueOf = (k: string) => view.fields.find((f) => f.key === k)?.value || '';
+  const amount = Number(valueOf('loanAmount').replace(/[^0-9.]/g, '')) || 0;
+  const months = Number(valueOf('tenureMonths').replace(/[^0-9]/g, '')) || loan?.tenureMonths || 0;
+  if (loan) {
+    const lender = valueOf('lender');
+    const offer = loan.offers.find((o) => o.lender === lender) || (loan.offers.length === 1 ? loan.offers[0] : undefined);
+    const est = rateFor(view.schemeId, offer?.lender);
+    const instalment = emi(amount, est.rate, months);
+    const rows: Array<[string, string]> = [
+      ['Loan', view.scheme?.name || ''],
+      ['Lender chosen', offer ? `${offer.lender} (${LENDER_TYPE_LABEL[offer.type]})` : lender || 'Not decided - compare the lenders listed at the end'],
+      ['Interest (indicative)', offer?.rate && !/^Bank rate/.test(offer.rate) ? offer.rate : loan.rate],
+      ['Amount requested', amount ? formatRupees(amount) : '[ to be filled ]'],
+      ['Repayment period', months ? `${months} months` : loan.tenure],
+      ['Estimated EMI', instalment ? `about ${formatRupees(instalment)} a month at ${est.rate}% a year (${est.from === 'lender' ? "lender's lowest published rate" : 'typical rate for this loan'})` : '-'],
+      ['Loan limits', loan.amount.text],
+      ['Collateral', loan.collateral],
+      ...(loan.subsidy ? ([['Government help', loan.subsidy]] as Array<[string, string]>) : []),
+    ];
+    const lines = rows.map(([k, v]) => [k, wrap(latin(v).text, font, 9, W - 2 * M - 140)] as const);
+    const noteLines = loan.statusNote ? wrap(latin(`Note: ${loan.statusNote}`).text, bold, 7.5, W - 2 * M - 20) : [];
+    const boxH = lines.reduce((h, [, l]) => h + l.length * 12 + 2, 0) + 34 + (noteLines.length ? noteLines.length * 10 + 4 : 0);
+    need(boxH + 10);
+    page.drawRectangle({ x: M, y: y - boxH + 12, width: W - 2 * M, height: boxH, color: rgb(0.93, 0.97, 0.96), borderColor: GREEN, borderWidth: 1 });
+    text('LOAN REQUESTED', M + 10, 9.5, bold, GREEN);
+    y -= 16;
+    for (const [k, l] of lines) {
+      text(k, M + 10, 8.5, bold, MUTED);
+      for (const line of l) {
+        page.drawText(line, { x: M + 130, y, size: 9, font, color: NAVY });
+        y -= 12;
+      }
+      y -= 2;
+    }
+    const caveat = `Rates and limits are indicative (checked ${loan.checked}). The lender's sanction letter and Key Fact Statement are final.`;
+    page.drawText(latin(caveat).text, { x: M + 10, y, size: 7.5, font, color: MUTED });
+    y -= noteLines.length ? 12 : 22;
+    if (noteLines.length) {
+      for (const l of noteLines) {
+        page.drawText(l, { x: M + 10, y, size: 7.5, font: bold, color: rgb(0.6, 0.2, 0.1) });
+        y -= 10;
+      }
+      y -= 14;
+    }
+  }
+
   const labelW = 175;
   const valueX = M + labelW;
   const valueW = W - M - valueX - 95;
@@ -237,6 +286,42 @@ export async function generateDraftPdf(view: DraftView, opts: { aadhaarFull?: st
     }
   }
   y -= 10;
+
+  // Loans: compare every lender for this loan at the amount and period asked for
+  if (loan && loan.offers.length > 1) {
+    need(40 + loan.offers.length * 26);
+    text('COMPARE LENDERS FOR THIS LOAN', M, 9.5, bold, GREEN);
+    y -= 15;
+    const cols = [M + 6, M + 150, M + 260, M + 400];
+    // Same estimate for every lender says nothing, so the EMI column needs at least one published rate
+    const showEmi = amount > 0 && loan.offers.some((o) => o.rateFrom);
+    for (const [i, h] of ['Lender', 'Type', 'Indicative interest', ...(showEmi ? ['Estimated EMI'] : [])].entries()) text(h, cols[i], 8, bold, MUTED);
+    y -= 12;
+    for (const o of loan.offers) {
+      const r = o.rateFrom ?? loan.estimateRate;
+      const e = emi(amount, r, months);
+      const rateLines = wrap(latin(o.rate).text, font, 8, 130);
+      const nameLines = wrap(latin(o.lender).text, bold, 8.5, 140);
+      const h = Math.max(rateLines.length, nameLines.length) * 11;
+      need(h + 6);
+      const top = y;
+      nameLines.forEach((l, i) => page.drawText(l, { x: cols[0], y: top - i * 11, size: 8.5, font: bold, color: NAVY }));
+      page.drawText(latin(LENDER_TYPE_LABEL[o.type]).text, { x: cols[1], y: top, size: 8, font, color: NAVY });
+      rateLines.forEach((l, i) => page.drawText(l, { x: cols[2], y: top - i * 11, size: 8, font, color: NAVY }));
+      if (showEmi) page.drawText(e ? `${latin(formatRupees(e)).text}/month${o.rateFrom ? '' : ' *'}` : '-', { x: cols[3], y: top, size: 8, font, color: NAVY });
+      y = top - h;
+      page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: rgb(0.88, 0.87, 0.83) });
+      y -= 4;
+    }
+    const foot = showEmi
+      ? `EMIs use each lender's lowest published rate; * = no published rate, typical rate of ${loan.estimateRate}% used. Your rate depends on your credit score and the lender.`
+      : 'These lenders set the rate for each borrower - ask each one for its Key Fact Statement and compare the total cost.';
+    for (const l of wrap(latin(foot).text, font, 7.5, W - 2 * M - 10)) {
+      page.drawText(l, { x: M + 6, y, size: 7.5, font, color: MUTED });
+      y -= 10;
+    }
+    y -= 12;
+  }
 
   // Declaration
   need(90);

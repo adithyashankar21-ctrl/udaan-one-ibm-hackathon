@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
+import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, IndianRupee, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
 import type { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { DOCUMENT_CATEGORIES, DOCUMENT_SERVICES, type DocumentCategory, type DocumentService } from '../../data/documentServices';
 import { FORM_SCHEMA_MAP, requirementsFor, DOC_KINDS } from '../../data/autofillSchema';
@@ -8,12 +8,13 @@ import { autofillApi, type SessionState, type SchemeInfo } from '../../services/
 import { useDictation } from '../smartapply/media';
 import { Alert, EmptyState, Spinner, StatusPill } from '../ui/kit';
 
-/** Switch between the two halves of Explore: schemes and official documents. */
-export const ExploreTabs: React.FC<{ current: 'schemes' | 'documents'; onNavigate?: (m: ChannelMode) => void }> = ({ current, onNavigate }) =>
+/** Switch between the parts of Explore: schemes, loans and official documents. */
+export const ExploreTabs: React.FC<{ current: 'schemes' | 'loans' | 'documents'; onNavigate?: (m: ChannelMode) => void }> = ({ current, onNavigate }) =>
   onNavigate ? (
-    <div role="tablist" aria-label="Explore" className="inline-flex rounded-2xl border border-line bg-white p-1">
+    <div role="tablist" aria-label="Explore" className="inline-flex max-w-full overflow-x-auto rounded-2xl border border-line bg-white p-1">
       {[
         { id: 'schemes' as const, label: 'Government schemes', icon: Landmark },
+        { id: 'loans' as const, label: 'Loans', icon: IndianRupee },
         { id: 'documents' as const, label: 'Documents & certificates', icon: FileBadge },
       ].map((tab) => (
         <button
@@ -21,7 +22,7 @@ export const ExploreTabs: React.FC<{ current: 'schemes' | 'documents'; onNavigat
           role="tab"
           aria-selected={current === tab.id}
           onClick={() => onNavigate(tab.id)}
-          className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors ${current === tab.id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
+          className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors ${current === tab.id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
         >
           <tab.icon className="h-4 w-4" aria-hidden /> {tab.label}
         </button>

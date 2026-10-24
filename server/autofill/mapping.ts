@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { DOC_KINDS, FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, docKindsYielding, requirementsFor, type DocKind, type FormFieldSpec, type Requirement, type SchemeFormSchema } from '../../src/data/autofillSchema';
 import { DOCUMENT_SERVICES } from '../../src/data/documentServices';
 import { SCHEME_CATALOG } from '../../src/data/schemeCatalog';
+import { LOAN_PRODUCTS, emi, formatRupees, loanDetails, rateFor } from '../../src/data/loanCatalog';
 import { cannotMeet, checkDocument, isUsable } from './checks';
 import type { DocCheck, DocumentRecord, Draft, FieldRecord, SessionData } from './types';
 import { ageFromDob, checkValue, normaliseMoney } from './validate';
@@ -149,7 +150,7 @@ function applyCrossChecks(views: FieldView[], schemeId: string) {
   }
 
   const dob = get('dateOfBirth')?.value;
-  const catalog = [...SCHEME_CATALOG, ...DOCUMENT_SERVICES].find((s) => s.id === schemeId);
+  const catalog = [...SCHEME_CATALOG, ...DOCUMENT_SERVICES, ...LOAN_PRODUCTS].find((s) => s.id === schemeId);
   if (dob && catalog) {
     const age = ageFromDob(dob);
     if (age !== null && catalog.rules.minAge !== undefined && age < catalog.rules.minAge) flag('dateOfBirth', `This scheme's minimum age is ${catalog.rules.minAge}.`);
@@ -172,6 +173,27 @@ function applyCrossChecks(views: FieldView[], schemeId: string) {
   const share = num('ownershipShare');
   if (schemeId === 'stand-up-india' && !isNaN(share) && share < 51) flag('ownershipShare', 'At least 51% must be owned by SC/ST or women entrepreneurs.');
   if (num('ownContribution') > num('projectCost')) flag('ownContribution', 'Your contribution is larger than the project cost.');
+
+  // Loans: the requested amount against the product's limit, and whether the EMI is affordable
+  const loan = loanDetails(schemeId);
+  if (loan) {
+    const amount = num('loanAmount');
+    if (loan.amount.max && amount > loan.amount.max) flag('loanAmount', `This loan goes up to ${formatRupees(loan.amount.max)}.`);
+    if (loan.amount.min && amount < loan.amount.min) flag('loanAmount', `This loan usually starts at ${formatRupees(loan.amount.min)}.`);
+    const months = num('tenureMonths');
+    const income = num('monthlyIncome');
+    if (amount > 0 && months > 0 && income > 0) {
+      const instalment = emi(amount, rateFor(schemeId, get('lender')?.value).rate, months);
+      const total = instalment + (num('existingEmi') || 0);
+      if (total > income * 0.5) {
+        flag('monthlyIncome', `All your EMIs together (about ${formatRupees(total)} a month) would be more than half your monthly income — lenders may reduce the amount. Try a longer period or a smaller loan.`);
+      }
+    }
+  }
+  if (schemeId === 'loan-pmay-home') {
+    if (num('propertyValue') > 3500000) flag('propertyValue', 'The PMAY-U 2.0 subsidy is for homes worth up to ₹35 lakh.');
+    if (num('carpetArea') > 120) flag('carpetArea', 'The PMAY-U 2.0 subsidy is for homes up to 120 sq m carpet area.');
+  }
 }
 
 const BLOCKING_ANSWERS: Record<string, Array<[string, string, string]>> = {
@@ -183,6 +205,10 @@ const BLOCKING_ANSWERS: Record<string, Array<[string, string, string]>> = {
   ],
   'pm-ajay': [['earlierAssistance', 'Yes', 'Help is usually given once for the same asset — the district office will check.']],
   mudra: [['loanDefault', 'Yes', 'Lenders do not give MUDRA loans to defaulters.']],
+  'loan-pmay-home': [['ownsPuccaHouse', 'Yes', 'The PMAY-U 2.0 subsidy is only for families with no pucca house anywhere in India.']],
+  'loan-vidyalaxmi': [['admissionType', 'Management quota', 'PM-Vidyalaxmi is only for merit admissions — try a regular education loan instead.']],
+  'loan-svanidhi': [['vendingProof', 'None yet', 'Ask your town municipality for a letter of recommendation before applying.']],
+  'loan-pmegp': [['loanDefault', 'Yes', 'Banks do not sanction PMEGP loans to defaulters.']],
   nsfdc: [['loanDefault', 'Yes', 'Defaulters are not given NSFDC loans.']],
   'stand-up-india': [
     ['greenfield', 'No', 'Stand-Up India is only for new (greenfield) enterprises.'],
@@ -320,8 +346,13 @@ export function buildDraftView(session: SessionData, draft: Draft): DraftView {
               .replace(/^./, (c) => c.toUpperCase()) + '.',
           };
 
+  const loan = loanDetails(draft.schemeId);
+  const lender = fields.find((f) => f.key === 'lender')?.value;
+  const offer = loan?.offers.find((o) => o.lender === lender);
   const nextSteps = [
-    `Submit through: ${schema.submission.where} (${schema.submission.url}). UDAAN ONE has no authorised submission link for this scheme, so it cannot submit for you.`,
+    ...(offer ? [`Apply to: ${offer.lender} (${offer.url}). Ask for the Key Fact Statement and compare its interest rate and fees with the estimate in this draft.`] : []),
+    ...(loan && !offer ? ['Choose a lender: compare the interest rate, processing fee and total cost of at least two lenders before you apply.'] : []),
+    `Submit through: ${schema.submission.where} (${schema.submission.url}). UDAAN ONE has no authorised submission link for this ${loan ? 'loan' : 'scheme'}, so it cannot submit for you.`,
     'Take the original documents with you — the office will verify them. Reading a document here does not verify it.',
     ...(info?.steps || []).slice(0, 3),
     'Keep the acknowledgement or application number the office or portal gives you.',
@@ -370,8 +401,8 @@ const OWN_NAME: DocKind[] = ['aadhaar', 'pan', 'bank', 'caste', 'education', 'vo
  * requirement. Adds non-blocking concerns to `warnings`.
  */
 function schemeReason(schema: SchemeFormSchema, doc: DocumentRecord, req: Requirement, checks: DocCheck[], warnings: string[]): string | null {
-  if ((schema.kind || 'scheme') !== 'scheme') return null;
-  const catalog = SCHEME_CATALOG.find((s) => s.id === schema.schemeId);
+  if ((schema.kind || 'scheme') === 'document') return null;
+  const catalog = [...SCHEME_CATALOG, ...LOAN_PRODUCTS].find((s) => s.id === schema.schemeId);
   const read = (key: string) => doc.fields.find((f) => f.key === key && f.value)?.value;
 
   if (OWN_NAME.includes(doc.kind) && checks.some((c) => c.id === 'holder' && c.status !== 'pass')) {

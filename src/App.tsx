@@ -19,6 +19,7 @@ import { LearningHubPage } from './components/pages/LearningHubPage';
 import { EnterprisePage } from './components/pages/EnterprisePage';
 import { ApplicationsPage } from './components/pages/ApplicationsPage';
 import { DocumentsPage } from './components/pages/DocumentsPage';
+import { LoansPage } from './components/pages/LoansPage';
 import { VoiceStudio } from './components/VoiceStudio';
 import { KioskMode } from './components/KioskMode';
 import { WhatsAppVoiceBot } from './components/WhatsAppVoiceBot';
@@ -35,6 +36,7 @@ import { saveLanguage, savedLanguage } from './components/AuthGate';
 import { ProfileSetup, profileComplete } from './components/ProfileSetup';
 import { CallMeCard } from './components/CallMeCard';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
+import { LOAN_WORDS } from './data/loanCatalog';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
 import { aiService } from './services/aiService';
 import {
@@ -357,6 +359,18 @@ export default function App() {
               </span>
             </span>
             <span className="flex gap-2">
+              {/* "I need a loan" without naming one: compare loans first */}
+              {!applyIntent.schemeId && LOAN_WORDS.test(applyIntent.text || '') && (
+                <button
+                  onClick={() => {
+                    setApplyIntent(null);
+                    setCurrentChannel('loans');
+                  }}
+                  className="btn btn-on-dark flex-1 sm:flex-none"
+                >
+                  Compare loans
+                </button>
+              )}
               <button onClick={() => openSmartApply({ schemeId: applyIntent.schemeId, channel: applyIntent.channel })} className="btn btn-accent flex-1 sm:flex-none">
                 {sa.continueToSmartApply} <ArrowRight className="h-4 w-4" aria-hidden />
               </button>
@@ -398,6 +412,15 @@ export default function App() {
             profile={userProfile}
             langConfig={langConfig}
             session={autofillSession}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
+            onNavigate={setCurrentChannel}
+          />
+        )}
+
+        {currentChannel === 'loans' && (
+          <LoansPage
+            profile={userProfile}
+            langConfig={langConfig}
             onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
             onNavigate={setCurrentChannel}
           />
@@ -580,6 +603,7 @@ export default function App() {
             <ul className="mt-3 space-y-2 text-muted">
               {([
                 ['schemes', 'Explore Schemes'],
+                ['loans', 'Loans'],
                 ['documents', 'Documents & certificates'],
                 ['skills', 'Skills & Opportunities'],
                 ['learning', 'Learning Hub'],

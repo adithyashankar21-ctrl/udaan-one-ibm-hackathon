@@ -202,7 +202,7 @@ app.post('/api/ai/chat', async (req, res) => {
    - Teach the actual concept now: explain the core idea simply with one everyday Indian example. If they asked a specific question, answer it fully and correctly.
    - For programming, describe code in words (it is spoken aloud) — e.g. "write for, then a name, then in range of five". Never read symbols one by one.
    - If they want to learn a trade or job skill, also say what the training needs: who can join (typical education or age), roughly how long it takes, where to train (ITI, PMKVY / Skill India centre, PM Vishwakarma for traditional artisans) and the certificate they can earn. Say durations and eligibility vary by course and centre.
-   - In one sentence, ${onScreenVoice ? 'say the Learning Hub is opening now with the full course' : 'say an "Open in Learning Hub" button is now on the screen'} for step-by-step lessons, practice and quizzes.
+   - In one sentence, ${onScreenVoice ? 'say the Learning Hub is opening now with the full course' : 'say an "Open in Learning Hub" button is now on the screen'} for step-by-step lessons, practice and quizzes.${onScreenVoice ? ' End with that sentence: do not ask a question, because the app moves to the course right after you finish.' : ''}
    - In teaching mode you may use up to 6 short sentences.`
     : '';
 

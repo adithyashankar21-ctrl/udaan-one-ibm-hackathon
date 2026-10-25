@@ -246,6 +246,7 @@
  "Aadhaar Enrolment Form (filled at the enrolment centre)": "आधार नोंदणी अर्ज (नोंदणी केंद्रावर भरलेला)",
  "Aadhaar enrolment is free and done in person at an Aadhaar enrolment centre, where photo, fingerprints and iris are captured. You can book an appointment online. Children below {0} get Baal Aadhaar linked to a parent’s Aadhaar. Adults enrolling for the first time may go through extra verification.": "आधार नोंदणी विनामूल्य आहे आणि ती आधार नोंदणी केंद्रावर प्रत्यक्ष जाऊन केली जाते, जिथे फोटो, बोटांचे ठोसे आणि बुबुळ स्कॅन केले जातात. तुम्ही ऑनलाइन अपॉइंटमेंट बुक करू शकता. {0} वर्षांखालील मुलांचे बाल आधार पालकांच्या आधारशी जोडले जाते. पहिल्यांदा नोंदणी करणाऱ्या प्रौढांची अतिरिक्त पडताळणी केली जाऊ शकते.",
  "Aadhaar has {0} digits": "आधारला {0} अंक असतात",
+ "Aadhaar has {0} digits (or give the last {1})": "आधारमध्ये {0} अंक असतात (किंवा शेवटचे {1} अंक द्या)",
  "Aadhaar holders. Online updates need a mobile number registered with Aadhaar.": "आधारधारक. ऑनलाइन अपडेटसाठी आधारशी नोंदणीकृत मोबाईल नंबर आवश्यक आहे.",
  "Aadhaar KYC readily available": "आधार केवायसी सहज उपलब्ध",
  "aadhaar me address": "आधार मे पत्ता",

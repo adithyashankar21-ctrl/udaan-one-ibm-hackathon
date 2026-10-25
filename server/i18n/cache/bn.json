@@ -239,6 +239,7 @@
  "Aadhaar Enrolment Form (filled at the enrolment centre)": "আধার নথিভুক্তি ফর্ম (নথিভুক্তি কেন্দ্রে পূরণ করা হয়)",
  "Aadhaar enrolment is free and done in person at an Aadhaar enrolment centre, where photo, fingerprints and iris are captured. You can book an appointment online. Children below {0} get Baal Aadhaar linked to a parent’s Aadhaar. Adults enrolling for the first time may go through extra verification.": "আধার নথিভুক্তি বিনামূল্যে এবং আধার নথিভুক্তি কেন্দ্রে ব্যক্তিগতভাবে করা হয়, যেখানে ছবি, আঙুলের ছাপ এবং আইরিস নেওয়া হয়। আপনি অনলাইনে একটি অ্যাপয়েন্টমেন্ট বুক করতে পারেন। {0}-এর কম বয়সী শিশুরা অভিভাবকের আধারের সাথে লিঙ্ক করা বাল আধার পায়। প্রথমবারের মতো নথিভুক্ত করা প্রাপ্তবয়স্কদের অতিরিক্ত যাচাইকরণের মধ্য দিয়ে যেতে হতে পারে।",
  "Aadhaar has {0} digits": "আদারে {0}টি সংখ্যা আছে",
+ "Aadhaar has {0} digits (or give the last {1})": "আধার কার্ডে {0}টি সংখ্যা থাকে (অথবা শেষ {1}টি দিন)",
  "Aadhaar holders. Online updates need a mobile number registered with Aadhaar.": "আধার ধারক। অনলাইন আপডেটের জন্য আধার-এ নিবন্ধিত একটি মোবাইল নম্বর প্রয়োজন।",
  "Aadhaar KYC readily available": "আধার KYC সহজেই উপলব্ধ",
  "aadhaar me address": "আধারে ঠিকানা",

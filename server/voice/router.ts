@@ -184,11 +184,17 @@ export function createVoiceRouter({ translate, selfBase }: { translate: Translat
     return `<Play>${xml(`${publicBase(req)}/api/voice/audio/${id}`)}</Play>`;
   };
 
-  /** Listen for the caller: speech in their language, and keypad presses. */
-  const gather = (req: Request, call: Call, inner: string, opts: { digits?: number; hash?: boolean } = {}) =>
-    `<Gather input="speech dtmf" language="${HEARING[call.lang]}" speechTimeout="auto" timeout="7" actionOnEmptyResult="true" method="POST" action="${xml(
+  /**
+   * Listen for the caller: speech in their language, and keypad presses. Answers to form
+   * questions may pause (between "my number is…" and the digits), so they get a longer silence
+   * before the turn ends; `hints` are words the answer is likely to contain (the options).
+   */
+  const gather = (req: Request, call: Call, inner: string, opts: { digits?: number; hash?: boolean; hints?: string[]; patient?: boolean } = {}) =>
+    `<Gather input="speech dtmf" language="${HEARING[call.lang]}" speechTimeout="${opts.patient ? 2 : 'auto'}" timeout="7" actionOnEmptyResult="true" method="POST" action="${xml(
       `${publicBase(req)}/api/voice/turn`
-    )}"${opts.digits ? ` numDigits="${opts.digits}"` : ''}${opts.hash ? ' finishOnKey="#"' : ''}>${inner}</Gather>`;
+    )}"${opts.digits ? ` numDigits="${opts.digits}"` : ''}${opts.hash ? ' finishOnKey="#"' : ''}${
+      opts.hints?.length ? ` hints="${xml(opts.hints.map((h) => h.replace(/\s*\(.*?\)/g, '').replace(/,/g, ' ')).join(', ').slice(0, 900))}"` : ''
+    }>${inner}</Gather>`;
 
   const send = (res: Response, inner: string) => res.type('text/xml').send(twiml(inner));
 
@@ -213,7 +219,7 @@ export function createVoiceRouter({ translate, selfBase }: { translate: Translat
     const text = q.key === 'aadhaar' ? 'Please say or type the last 4 digits of your Aadhaar number.' : (call.lang === 'hi' && q.questionHi) || q.question || q.label;
     const hint = isYesNo(q) ? P.yesNo : q.options && q.options.length <= 6 ? P.press(q.options) : !q.options && /mobile|pincode|aadhaar|number|money|account/.test(q.type) ? P.numberKeys : '';
     const digits = q.options && q.options.length <= 9 ? 1 : undefined;
-    return gather(req, call, await say(req, call, [...prefix, text, hint]), { digits, hash: !digits });
+    return gather(req, call, await say(req, call, [...prefix, text, hint]), { digits, hash: !digits, hints: q.options, patient: true });
   };
 
   const finishApplication = async (req: Request, call: Call, prefix: string[]) => {
@@ -229,7 +235,9 @@ export function createVoiceRouter({ translate, selfBase }: { translate: Translat
 
   const answer = async (req: Request, call: Call, text: string) => {
     const q = current(call)!;
-    const r = await local('/api/autofill/helpline/answer', { key: q.key, text }, { 'X-Helpline-Token': call.appToken! }).catch(() => null);
+    // How sure Twilio's recogniser was (spoken answers only), so unclear speech is checked more carefully
+    const confidence = req.body?.SpeechResult ? Number(req.body?.Confidence) || undefined : undefined;
+    const r = await local('/api/autofill/helpline/answer', { key: q.key, text, confidence }, { 'X-Helpline-Token': call.appToken! }).catch(() => null);
     if (!r || r.status !== 200) {
       call.stage = 'chat';
       return gather(req, call, await say(req, call, [P.busy, P.anythingElse]));

@@ -6,6 +6,7 @@ import type { BeneficiaryProfile } from '../types';
 import { authHeader } from './supabase';
 import type { ProfileKey } from '../data/autofillSchema';
 import type { LoanDetails } from '../data/loanCatalog';
+import { heardDetails } from './heard';
 
 const BASE = '/api/autofill';
 
@@ -231,8 +232,20 @@ export const autofillApi = {
     call<{ wantsToApply: boolean; schemeId: string | null; scheme: SchemeInfo | null; relatedSchemes: SchemeInfo[]; reason: string; matchedBy: string }>('/intent', { method: 'POST', json: { text, language } }),
   recommend: () => call<{ recommendations: SchemeInfo[]; note: string }>('/recommend'),
 
-  updateProfile: (updates: Partial<Record<ProfileKey, string>>, source: string, confirm = false) =>
-    call<SessionState & { errors: Record<string, string> }>('/profile', { method: 'POST', json: { updates, source, confirm } }),
+  updateProfile: (updates: Partial<Record<ProfileKey, string>>, source: string, confirm = false) => {
+    // What the microphone heard for each answer, so the server can understand it
+    const heard = Object.entries(updates).map(([k, v]) => [k, heardDetails(String(v ?? ''))] as const);
+    return call<SessionState & { errors: Record<string, string> }>('/profile', {
+      method: 'POST',
+      json: {
+        updates,
+        source,
+        confirm,
+        alternatives: Object.fromEntries(heard.map(([k, h]) => [k, h.alternatives])),
+        confidence: Object.fromEntries(heard.map(([k, h]) => [k, h.confidence])),
+      },
+    });
+  },
   /** Learning Hub certificates earned by this person. */
   certificates: () => call<{ certificates: import('./learnApi').Certificate[] }>('/certificates').then((r) => r.certificates),
   issueCertificate: (passToken: string) => call<{ certificate: import('./learnApi').Certificate }>('/certificates', { method: 'POST', json: { passToken } }).then((r) => r.certificate),
@@ -254,8 +267,12 @@ export const autofillApi = {
   startDraft: (schemeId: string, channel: string) => call<SessionState & { draft: DraftView }>('/drafts', { method: 'POST', json: { schemeId, channel } }),
   getDraft: (id: string) => call<{ draft: DraftView; fieldsHash: string }>(`/drafts/${id}`),
   deleteDraft: (id: string) => call<SessionState>(`/drafts/${id}`, { method: 'DELETE', json: {} }),
+  /** `result.confirm`: understood, but worth reading back for a yes or no. */
   answer: (id: string, key: string, text: string, channel: string) =>
-    call<{ result: { ok: boolean; value?: string; error?: string }; draft: DraftView; fieldsHash: string }>(`/drafts/${id}/answer`, { method: 'POST', json: { key, text, channel } }),
+    call<{ result: { ok: boolean; value?: string; error?: string; confirm?: boolean }; draft: DraftView; fieldsHash: string }>(`/drafts/${id}/answer`, {
+      method: 'POST',
+      json: { key, text, channel, ...heardDetails(text) },
+    }),
   editFields: (id: string, values: Record<string, string>) =>
     call<SessionState & { errors: Record<string, string>; draft: DraftView; fieldsHash: string }>(`/drafts/${id}/fields`, { method: 'POST', json: { values } }),
   approve: (id: string, fieldsHash: string) => call<{ draft: DraftView; fieldsHash: string }>(`/drafts/${id}/approve`, { method: 'POST', json: { fieldsHash } }),
@@ -290,7 +307,7 @@ export const autofillApi = {
     resume: (reference: string, pin: string) => call<{ token: string }>('/helpline/resume', { method: 'POST', json: { reference, pin } }),
     draft: (token: string) => call<HelplineView>('/helpline/draft', { headers: { 'X-Helpline-Token': token } }),
     answer: (token: string, key: string, text: string) =>
-      call<HelplineView & { ok: boolean; error?: string }>('/helpline/answer', { method: 'POST', json: { key, text }, headers: { 'X-Helpline-Token': token } }),
+      call<HelplineView & { ok: boolean; error?: string }>('/helpline/answer', { method: 'POST', json: { key, text, ...heardDetails(text) }, headers: { 'X-Helpline-Token': token } }),
   },
 };
 

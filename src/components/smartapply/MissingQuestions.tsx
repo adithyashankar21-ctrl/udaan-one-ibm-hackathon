@@ -2,8 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AudioLines, Bot, CheckCircle2, Loader2, Mic, MicOff, Send, Square } from 'lucide-react';
 import type { SmartApplyStrings } from '../../data/smartApplyStrings';
 import type { LanguageCode } from '../../types';
-import { VOICE_COMMANDS, useDictation, useVoiceTurns } from './media';
+import { VOICE_COMMANDS, speakable, spokenYesNo, useDictation, useVoiceTurns } from './media';
 import { prefetchTranslations, spokenIn } from '../../services/translate';
+
+/** An error message, null when accepted, or the value that was understood. */
+export type AnswerOutcome = string | null | { said: string; confirm?: boolean };
 
 export interface Question {
   key: string;
@@ -21,8 +24,13 @@ interface Props {
   language: LanguageCode;
   speechLocale: string;
   questions: Question[];
-  /** Sends one answer; resolves to an error message, or null when it was accepted. */
-  onAnswer: (key: string, text: string, via: 'typed' | 'voice') => Promise<string | null>;
+  /**
+   * Sends one answer; resolves to an error message, null when it was accepted, or what was
+   * understood (`said`, read back by voice; `confirm` asks the person whether it is right).
+   */
+  onAnswer: (key: string, text: string, via: 'typed' | 'voice') => Promise<AnswerOutcome>;
+  /** Clears an answer the person said was understood wrongly, so it is asked again. */
+  onClear?: (key: string) => Promise<void>;
   compact?: boolean;
   dark?: boolean;
   /** Hands-free mode: called when every question is answered (e.g. to move on to documents). */
@@ -48,6 +56,10 @@ const PHRASES = {
     say: 'You can say',
     forExample: 'For example',
     or: 'or',
+    // {v} is the person's answer, put in after translation so answers never go to the translator
+    gotIt: 'Got it: {v}.',
+    check: 'I understood {v}. Is that right? Say yes or no.',
+    askAgain: 'All right, let me ask again.',
   },
   hi: {
     start: 'अब एक-एक करके सवाल पढ़े जाएँगे। माइक चालू होने पर जवाब दीजिए। कभी भी छोड़ो, दोबारा या रुको बोल सकते हैं।',
@@ -60,6 +72,9 @@ const PHRASES = {
     say: 'आप बोल सकते हैं',
     forExample: 'जैसे',
     or: 'या',
+    gotIt: 'ठीक है: {v}।',
+    check: 'मैंने {v} समझा। क्या यह सही है? हाँ या नहीं बोलिए।',
+    askAgain: 'ठीक है, फिर से पूछता हूँ।',
   },
 };
 
@@ -100,12 +115,16 @@ export const MissingQuestions: React.FC<Props> = (props) => {
   const voice = useVoiceTurns(speechLocale);
   /** Speaks in the chosen language: English parts are translated for languages without written phrases. */
   const say = async (...parts: string[]) => voice.say(await spokenIn(language, ...parts));
+  /** A phrase with the person's answer in it: only the phrase is translated, then {v} is filled in. */
+  const withValue = async (phrase: string, value: string) => (await spokenIn(language, phrase)).replace('{v}', value);
   const [handsFree, setHandsFree] = useState(false);
   const handsFreeRef = useRef(false);
   const [voiceTick, setVoiceTick] = useState(0);
   const prefixRef = useRef('');
   const missesRef = useRef(0);
-  const submitRef = useRef<(value: string, via: 'typed' | 'voice') => Promise<string | null>>(async () => null);
+  /** An answer understood with some doubt, read back at the start of the next turn. */
+  const checkRef = useRef<{ key: string; spoken: string } | null>(null);
+  const submitRef = useRef<(value: string, via: 'typed' | 'voice') => Promise<AnswerOutcome>>(async () => null);
 
   const setHands = (on: boolean) => {
     handsFreeRef.current = on;
@@ -131,8 +150,24 @@ export const MissingQuestions: React.FC<Props> = (props) => {
     // Skipped questions are not asked again by voice
     const current = pending[0];
     (async () => {
-      const prefix = prefixRef.current;
+      let prefix = prefixRef.current;
       prefixRef.current = '';
+      // The last answer was understood with some doubt: read it back and let the person say no
+      const check = checkRef.current;
+      checkRef.current = null;
+      if (check) {
+        if (!(await say(prefix, await withValue(phrases.check, check.spoken))) || !alive) return;
+        const reply = await voice.listen(7000);
+        if (reply === null || !alive || !handsFreeRef.current) return;
+        if (spokenYesNo(reply) === 'no') {
+          prefixRef.current = `${phrases.askAgain} `;
+          // The cleared question comes back and is asked again
+          await props.onClear?.(check.key);
+          if (alive) setVoiceTick((n) => n + 1);
+          return;
+        }
+        prefix = `${phrases.ok} `;
+      }
       if (!current) {
         await say(prefix, phrases.allDone);
         if (alive && handsFreeRef.current) {
@@ -175,9 +210,17 @@ export const MissingQuestions: React.FC<Props> = (props) => {
       }
       // Set before saving: a saved answer moves to the next question, which starts a new turn
       prefixRef.current = `${phrases.ok} `;
-      const error = await submitRef.current(heard, 'voice');
+      const outcome = await submitRef.current(heard, 'voice');
+      // Read back what was understood (never the Aadhaar), and check it when there was doubt
+      if (outcome && typeof outcome === 'object') {
+        const spoken = current.type === 'aadhaar' ? '' : speakable(outcome.said, current.type);
+        if (spoken && outcome.confirm) {
+          checkRef.current = { key: current.key, spoken };
+          prefixRef.current = '';
+        } else prefixRef.current = spoken ? `${await withValue(phrases.gotIt, spoken)} ` : `${phrases.ok} `;
+      }
       if (!alive || !handsFreeRef.current) return;
-      prefixRef.current = error ? `${error}. ` : `${phrases.ok} `;
+      if (typeof outcome === 'string') prefixRef.current = `${outcome}. `;
       setVoiceTick((n) => n + 1);
     })();
     return () => {
@@ -205,15 +248,19 @@ export const MissingQuestions: React.FC<Props> = (props) => {
     endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [turns.length]);
 
-  const submit = async (value: string, via: 'typed' | 'voice') => {
+  const submit = async (value: string, via: 'typed' | 'voice'): Promise<AnswerOutcome> => {
     if (!current || !value.trim() || busy) return null;
     setBusy(true);
     setTurns((ts) => [...ts, { role: 'user', text: current.key === 'aadhaar' ? value.replace(/\d(?=\d{4})/g, 'X') : value }]);
     setText('');
-    const error = await onAnswer(current.key, value, via);
-    if (error) setTurns((ts) => [...ts, { role: 'bot', text: error, error: true }]);
+    const outcome = await onAnswer(current.key, value, via);
+    if (typeof outcome === 'string') setTurns((ts) => [...ts, { role: 'bot', text: outcome, error: true }]);
+    // Show what was understood when it differs from what was said ("my name is Ramesh" → Ramesh)
+    else if (outcome && current.type !== 'aadhaar' && outcome.said.trim().toLowerCase() !== value.trim().toLowerCase()) {
+      setTurns((ts) => [...ts, { role: 'bot', text: `✓ ${speakable(outcome.said, current.type)}` }]);
+    }
     setBusy(false);
-    return error;
+    return outcome;
   };
   submitRef.current = async (value, via) => (await submit(value, via)) ?? null;
 

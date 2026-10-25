@@ -44,6 +44,31 @@ export const VOICE_COMMANDS = {
   change: words(VOCAB.change),
 };
 
+// Phrases whose words alone would mislead: "no problem" is a yes, "not correct" is a no
+const YES_PHRASE = /no problem|no issue|why not|of course|go ahead|sure|that'?s right|bilkul|zaroor|sahi hai|theek hai|thik hai|ठीक है|सही है|बिल्कुल|ज़रूर|जरूर|कोई बात नहीं/i;
+const NO_PHRASE = /not (?:correct|right|ok(?:ay)?)|that'?s wrong|sahi nahi|theek nahi|galat hai|सही नहीं|ठीक नहीं|गलत है|ग़लत है/i;
+
+/**
+ * Whether a spoken reply means yes or no, in every supported language, or null when it is
+ * neither. When both words appear ("haan… nahi"), the last one said wins.
+ */
+export function spokenYesNo(text: string): 'yes' | 'no' | null {
+  const t = text.trim();
+  if (!t) return null;
+  if (NO_PHRASE.test(t)) return 'no';
+  if (YES_PHRASE.test(t)) return 'yes';
+  const isYes = (w: string) => VOICE_COMMANDS.yes.test(w) || VOICE_COMMANDS.approve.test(w) || VOICE_COMMANDS.agree.test(w);
+  const isNo = (w: string) => VOICE_COMMANDS.no.test(w) || VOICE_COMMANDS.change.test(w);
+  // Word by word from the end; two-word windows catch "ठीक है" or "हो गया" style replies
+  const words = t.split(/[\s,.!?।۔،؟]+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const pair = i > 0 ? `${words[i - 1]} ${words[i]}` : words[i];
+    if (isNo(words[i]) || isNo(pair)) return 'no';
+    if (isYes(words[i]) || isYes(pair)) return 'yes';
+  }
+  return null;
+}
+
 /** "One" / "first" / "दूसरा" … in every supported language, by position (1-based). */
 const ORDINALS: string[] = [
   'one|first|ek|pehla|pahla|एक|पहला|पहिला|ஒன்று|ஒன்னு|முதல்|ఒకటి|మొదటి|ಒಂದು|ಮೊದಲ|ഒന്ന്|ആദ്യ|এক|প্রথম|એક|પહેલું|પહેલો|ਇੱਕ|ਪਹਿਲਾ|ଏକ|ପ୍ରଥମ|ایک|پہلا',

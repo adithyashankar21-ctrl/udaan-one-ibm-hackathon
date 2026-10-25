@@ -3,7 +3,7 @@ import { AudioLines } from 'lucide-react';
 import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind } from '../../data/autofillSchema';
 import { autofillApi, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { CameraScanner } from './CameraScanner';
-import { VOICE_COMMANDS, findField, preparePassportPhoto, spokenIndex, useVoiceTurns } from './media';
+import { VOICE_COMMANDS, findField, preparePassportPhoto, spokenIndex, useVoiceTurns, spokenYesNo } from './media';
 import { spokenIn } from '../../services/translate';
 import type { LanguageCode } from '../../types';
 
@@ -231,7 +231,7 @@ export const VoiceDocs: React.FC<Props> = ({ start, speechLocale, language, getD
         prompt = p.afterRead;
         continue;
       }
-      if ((VOICE_COMMANDS.approve.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) {
+      if (spokenYesNo(heard) === 'yes') {
         if (!(await onApprove())) {
           const d = (await refreshDraft()) || draft;
           const needs = [...d.documents.filter((x) => x.required && !x.have && !x.manual).map((x) => x.label.toLowerCase()), ...d.missing.map((f) => labelOf(f).toLowerCase())];

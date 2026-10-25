@@ -4,7 +4,7 @@ import { getSmartApplyStrings } from '../../data/smartApplyStrings';
 import { toAsciiDigits } from '../../data/languageTools';
 import { spokenIn } from '../../services/translate';
 import type { LanguageCode } from '../../types';
-import { VOICE_COMMANDS } from './media';
+import { VOICE_COMMANDS, spokenYesNo } from './media';
 
 /**
  * Continue a Smart Apply application inside a helpline call: the caller says or keys in the
@@ -209,7 +209,7 @@ export function useIvrApplication({ say: sayAsGiven, setBusy, language }: Option
       return false;
     }
     if (stg === 'consent') {
-      if ((VOICE_COMMANDS.agree.test(text) || VOICE_COMMANDS.yes.test(text)) && !VOICE_COMMANDS.no.test(text)) {
+      if (spokenYesNo(text) === 'yes') {
         setBusy(true);
         try {
           const s = await autofillApi.session();

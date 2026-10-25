@@ -4,7 +4,7 @@ import { getSmartApplyStrings } from '../../data/smartApplyStrings';
 import { autofillApi, type DraftView, type SessionState, type UploadFile } from '../../services/autofillApi';
 import { spokenIn } from '../../services/translate';
 import type { LanguageCode } from '../../types';
-import { VOICE_COMMANDS, findField, prepareFile, preparePassportPhoto, spokenIndex } from './media';
+import { VOICE_COMMANDS, findField, prepareFile, preparePassportPhoto, spokenIndex, spokenYesNo } from './media';
 import { CONTINUE_APPLICATION } from './useIvrApplication';
 
 /**
@@ -264,7 +264,7 @@ export function useApplicationDesk({ language, say: show, setBusy, onSession, ch
     }
 
     if (stg === 'consent') {
-      if ((VOICE_COMMANDS.agree.test(text) || VOICE_COMMANDS.yes.test(text)) && !VOICE_COMMANDS.no.test(text)) {
+      if (spokenYesNo(text) === 'yes') {
         busy(true);
         try {
           const s = await autofillApi.session();
@@ -361,7 +361,7 @@ export function useApplicationDesk({ language, say: show, setBusy, onSession, ch
           await show(filled.map((f, i) => `${labels.length === filled.length ? labels[i] : f.label}: ${f.value}`).join('. ') + '.');
           current.current = { prompt: P.afterRead };
           await say(P.afterRead);
-        } else if ((VOICE_COMMANDS.approve.test(text) || VOICE_COMMANDS.yes.test(text)) && !VOICE_COMMANDS.no.test(text)) {
+        } else if (spokenYesNo(text) === 'yes') {
           busy(true);
           try {
             const latest = await autofillApi.getDraft(d.id);

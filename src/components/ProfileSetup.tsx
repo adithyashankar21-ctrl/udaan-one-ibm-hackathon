@@ -6,7 +6,7 @@ import { getSmartApplyStrings } from '../data/smartApplyStrings';
 import { autofillApi, type SessionState } from '../services/autofillApi';
 import { spokenIn } from '../services/translate';
 import type { LanguageCode } from '../types';
-import { VOICE_COMMANDS, useDictation, useVoiceTurns } from './smartapply/media';
+import { VOICE_COMMANDS, useDictation, useVoiceTurns, spokenYesNo } from './smartapply/media';
 import { Spinner } from './ui/kit';
 
 /**
@@ -123,7 +123,7 @@ export const ProfileSetup: React.FC<Props> = ({ language, onLanguageChange, sess
       const heard = await voice.listen(9000);
       if (heard === null) return;
       if (!heard) continue;
-      if ((VOICE_COMMANDS.agree.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) return agree();
+      if (spokenYesNo(heard) === 'yes') return agree();
       return;
     }
   };

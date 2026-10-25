@@ -18,7 +18,8 @@ import { FORM_SCHEMA_MAP, PROFILE_FIELD_MAP, type DocKind, type FormFieldSpec, t
 import { IngestError, checkFiles, checkPdfs } from './ingest';
 import { checkDocument, isUsable } from './checks';
 import { buildDraftView, fieldsHash } from './mapping';
-import { extractDocument, interpretAnswer, type Generate } from './ocr';
+import { extractDocument, type Generate } from './ocr';
+import { understandAnswer } from './understand';
 import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
 import { checkPhoto } from './photo';
 import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
@@ -181,10 +182,18 @@ function sessionPayload(session: SessionData | null) {
   };
 }
 
-/** Longest wait for Gemini to interpret a free-speech answer before using it as said. */
-const ANSWER_AI_MS = 5000;
+/** Longest wait for Gemini to understand a spoken answer before falling back to the quick rules. */
+const ANSWER_AI_MS = 7000;
 
-/** Normalise and store one answer for a draft field. */
+/** Other recognitions of the same speech sent by the browser (or none). */
+const alternativesOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 500)).slice(0, 5) : []);
+const confidenceOf = (v: unknown) => (typeof v === 'number' && v > 0 && v <= 1 ? v : undefined);
+
+/**
+ * Understand and store one answer for a draft field. Spoken and chatted answers are understood
+ * (the value is taken out of what was said); `status: 'confirmed'` means it was typed straight
+ * into the form field, so it is only checked.
+ */
 async function storeAnswer(
   generate: Generate,
   session: SessionData,
@@ -192,26 +201,20 @@ async function storeAnswer(
   spec: FormFieldSpec,
   text: string,
   source: SourceKind,
-  status: FieldRecord['status']
-): Promise<{ ok: boolean; value?: string; error?: string }> {
-  let n = normalise(spec.type, text, spec.options);
-  const needsAi = !n.ok || (spec.type === 'text' && hasNonLatin(text));
-  if (needsAi && spec.type !== 'aadhaar') {
-    try {
-      // Spoken answers must feel instant: give the AI a few seconds, then fall back
-      const ai = await Promise.race([
-        interpretAnswer(generate, { label: spec.label, type: spec.type, options: spec.options }, text),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('interpret timeout')), ANSWER_AI_MS)),
-      ]);
-      if (ai.understood && ai.value) {
-        const again = normalise(spec.type, ai.value, spec.options);
-        if (again.ok) n = again;
-      }
-    } catch (err) {
-      logError('interpret-answer', err);
-    }
-  }
+  status: FieldRecord['status'],
+  heard: { alternatives?: string[]; confidence?: number } = {}
+): Promise<{ ok: boolean; value?: string; error?: string; confirm?: boolean }> {
+  const n = await understandAnswer(
+    generate,
+    { label: spec.label, type: spec.type, options: spec.options, question: (spec as any).question, help: (spec as any).help },
+    { text, ...heard },
+    { exact: status === 'confirmed', timeoutMs: ANSWER_AI_MS }
+  ).catch((err) => {
+    logError('understand-answer', err);
+    return normalise(spec.type, text, spec.options);
+  });
   if (!n.ok || !n.value) return { ok: false, error: n.error || 'Could not understand that answer' };
+  const confirm = 'confirm' in n ? Boolean((n as any).confirm) : undefined;
 
   const sourceLabel = SOURCE_LABELS[source] || 'Your answer';
   if (spec.profileKey) {
@@ -221,7 +224,7 @@ async function storeAnswer(
   } else {
     draft.answers[spec.key] = { value: n.value, source, sourceLabel, status, updatedAt: Date.now() };
   }
-  return { ok: true, value: n.value };
+  return { ok: true, value: n.value, confirm };
 }
 
 /* ── router ───────────────────────────────────────────────────────────── */
@@ -365,15 +368,19 @@ export function createAutofillRouter(generate: Generate) {
 
   router.post(
     '/profile',
-    withSession((req, res, session) => {
+    withSession(async (req, res, session) => {
       const updates = req.body?.updates || {};
       const source = channelSource(req.body?.source);
       const status: FieldRecord['status'] = req.body?.confirm ? 'confirmed' : 'self_declared';
       const errors: Record<string, string> = {};
+      // Spoken or chatted profile answers are understood like form answers; typed ones are only checked
+      const spoken = source === 'voice' || source === 'chat' || source === 'helpline';
       for (const [key, raw] of Object.entries(updates)) {
         const def = PROFILE_FIELD_MAP[key as ProfileKey];
         if (!def || typeof raw !== 'string' || !raw.trim()) continue;
-        const n = normalise(def.type, raw, def.options);
+        const n = spoken
+          ? await understandAnswer(generate, def, { text: raw.slice(0, 500), alternatives: alternativesOf(req.body?.alternatives?.[key]), confidence: confidenceOf(req.body?.confidence?.[key]) }, { timeoutMs: ANSWER_AI_MS })
+          : normalise(def.type, raw, def.options);
         if (!n.ok || !n.value) {
           errors[key] = n.error || 'Invalid value';
           continue;
@@ -584,7 +591,10 @@ export function createAutofillRouter(generate: Generate) {
       if (!draft) return res.status(404).json({ error: 'Draft not found' });
       const spec = FORM_SCHEMA_MAP[draft.schemeId].fields.find((f) => f.key === req.body?.key);
       if (!spec) return res.status(400).json({ error: 'Unknown field' });
-      const result = await storeAnswer(generate, session, draft, spec, String(req.body?.text || '').slice(0, 500), channelSource(req.body?.channel), 'self_declared');
+      const result = await storeAnswer(generate, session, draft, spec, String(req.body?.text || '').slice(0, 500), channelSource(req.body?.channel), 'self_declared', {
+        alternatives: alternativesOf(req.body?.alternatives),
+        confidence: confidenceOf(req.body?.confidence),
+      });
       draft.updatedAt = Date.now();
       saveSession(session);
       const view = buildDraftView(session, draft);
@@ -897,7 +907,10 @@ export function createAutofillRouter(generate: Generate) {
     const spec = FORM_SCHEMA_MAP[c.draft.schemeId].fields.find((f) => f.key === req.body?.key);
     if (!spec) return res.status(400).json({ error: 'Unknown field' });
     try {
-      const result = await storeAnswer(generate, c.session, c.draft, spec, String(req.body?.text || '').slice(0, 500), 'helpline', 'self_declared');
+      const result = await storeAnswer(generate, c.session, c.draft, spec, String(req.body?.text || '').slice(0, 500), 'helpline', 'self_declared', {
+        alternatives: alternativesOf(req.body?.alternatives),
+        confidence: confidenceOf(req.body?.confidence),
+      });
       c.draft.updatedAt = Date.now();
       saveSession(c.session);
       // Echo back only whether it was understood, not the stored value

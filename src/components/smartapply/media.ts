@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UploadFile } from '../../services/autofillApi';
 import { pickVoice } from '../learning/useSpeaker';
 import { aiService, speakWithBackupVoice } from '../../services/aiService';
+import { rememberHeard } from '../../services/heard';
 
 const MAX_SIDE = 2200;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -84,6 +85,34 @@ export async function canvasToUpload(source: HTMLCanvasElement, rotation: number
   return { name, mimeType: 'image/jpeg', dataBase64: await toBase64(await canvasToJpeg(out)) };
 }
 
+/**
+ * Joins the recogniser's results into one transcript, with up to 3 alternative readings of the
+ * whole answer (each built by swapping in the second or third guess for one phrase).
+ */
+function collect(results: ArrayLike<any>, from = 0) {
+  const finals: any[] = [];
+  let live = '';
+  for (let i = from; i < results.length; i++) {
+    const r = results[i];
+    if (r.isFinal) finals.push(r);
+    else live += r[0]?.transcript || '';
+  }
+  const best = finals.map((r) => r[0]?.transcript || '').join(' ').replace(/\s+/g, ' ').trim();
+  const alternatives: string[] = [];
+  finals.forEach((r, i) => {
+    for (let k = 1; k < Math.min(r.length, 4); k++) {
+      const alt = finals.map((f, j) => (j === i ? r[k]?.transcript : f[0]?.transcript) || '').join(' ').replace(/\s+/g, ' ').trim();
+      if (alt && alt !== best && !alternatives.includes(alt)) alternatives.push(alt);
+    }
+  });
+  const scores = finals.map((r) => r[0]?.confidence).filter((c) => typeof c === 'number' && c > 0);
+  const confidence = scores.length ? Math.min(...scores) : undefined;
+  return { best, live: live.trim(), alternatives: alternatives.slice(0, 3), confidence };
+}
+
+/** Silence after speech that ends an answer — long enough for a pause between "my name is…" and the name. */
+const END_OF_ANSWER_MS = 1200;
+
 /** Browser speech-to-text for answering questions by voice (no Gemini quota used). */
 export function useDictation(locale: string, onText: (text: string) => void) {
   const [listening, setListening] = useState(false);
@@ -103,14 +132,38 @@ export function useDictation(locale: string, onText: (text: string) => void) {
     if (!Ctor) return;
     const rec = new Ctor();
     rec.lang = locale;
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e: any) => {
-      const text = Array.from(e.results as ArrayLike<any>).map((r: any) => r[0]?.transcript || '').join(' ').trim();
-      if (text) cbRef.current(text);
+    // Keep listening through short pauses; the answer ends after a moment of silence
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 4;
+    let heard = { best: '', live: '', alternatives: [] as string[], confidence: undefined as number | undefined };
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    let sent = false;
+    const send = () => {
+      if (sent) return;
+      sent = true;
+      clearTimeout(quiet);
+      try {
+        rec.stop();
+      } catch {}
+      const text = (heard.best || heard.live).trim();
+      if (!text) return;
+      rememberHeard(text, heard.alternatives, heard.confidence);
+      cbRef.current(text);
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onresult = (e: any) => {
+      heard = collect(e.results);
+      clearTimeout(quiet);
+      quiet = setTimeout(send, heard.live ? END_OF_ANSWER_MS * 2 : END_OF_ANSWER_MS);
+    };
+    rec.onend = () => {
+      send();
+      setListening(false);
+    };
+    rec.onerror = () => {
+      send();
+      setListening(false);
+    };
     recRef.current = rec;
     setListening(true);
     rec.start();
@@ -185,7 +238,11 @@ export function useVoiceTurns(locale: string) {
     [canSpeak, locale]
   );
 
-  /** Resolves with what was said, '' if nothing was heard in time, or null if cancelled. */
+  /**
+   * Resolves with what was said, '' if nothing was heard in time, or null if cancelled.
+   * `timeoutMs` is how long to wait for the person to start; once they speak, listening goes on
+   * through short pauses and ends after a moment of silence (or after 30 seconds).
+   */
   const listen = useCallback(
     (timeoutMs = 9000) =>
       new Promise<string | null>((resolve) => {
@@ -194,43 +251,51 @@ export function useVoiceTurns(locale: string) {
         const rec = new Rec();
         rec.lang = locale;
         rec.interimResults = true;
-        rec.continuous = false;
-        rec.maxAlternatives = 1;
-        let final = '';
+        rec.continuous = true;
+        rec.maxAlternatives = 4;
+        let heard = { best: '', live: '', alternatives: [] as string[], confidence: undefined as number | undefined };
         let settled = false;
+        let quiet: ReturnType<typeof setTimeout> | undefined;
+        const said = () => (heard.best || heard.live).trim();
         const finish = (value: string | null) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          clearTimeout(quiet);
+          clearTimeout(longest);
           try {
             rec.abort();
           } catch {}
           if (recRef.current === rec) recRef.current = null;
           setInterim('');
           if (run.current === mine) setPhase('idle');
+          if (value) rememberHeard(value, heard.alternatives, heard.confidence);
           resolve(run.current === mine ? value : null);
         };
-        const timer = setTimeout(() => finish(final.trim()), timeoutMs);
+        // Nothing said at all in time
+        const timer = setTimeout(() => finish(said()), timeoutMs);
+        const longest = setTimeout(() => finish(said()), 30000);
         rec.onresult = (e: any) => {
-          let live = '';
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const r = e.results[i];
-            if (r.isFinal) final += r[0].transcript + ' ';
-            else live += r[0].transcript;
-          }
-          setInterim((final + live).trim());
-          // Answer as soon as the browser marks the phrase final — no extra waiting
-          if (final.trim() && !live) finish(final.trim());
+          heard = collect(e.results);
+          setInterim([heard.best, heard.live].filter(Boolean).join(' '));
+          // They are speaking: stop the start timer and end the answer after a pause instead
+          clearTimeout(timer);
+          clearTimeout(quiet);
+          quiet = setTimeout(() => finish(said()), heard.live ? END_OF_ANSWER_MS * 2 : END_OF_ANSWER_MS);
         };
-        rec.onerror = (e: any) => finish(e?.error === 'no-speech' ? '' : final.trim());
-        rec.onend = () => finish(final.trim());
+        rec.onerror = (e: any) => finish(e?.error === 'no-speech' ? '' : said());
+        rec.onend = () => finish(said());
         recRef.current = rec;
         setPhase('listening');
-        try {
-          rec.start();
-        } catch {
-          finish('');
-        }
+        // A short gap after the app has spoken, so the end of its own voice is not heard as the answer
+        setTimeout(() => {
+          if (settled) return;
+          try {
+            rec.start();
+          } catch {
+            finish('');
+          }
+        }, 250);
       }),
     [Rec, locale]
   );
@@ -242,4 +307,15 @@ export function useVoiceTurns(locale: string) {
 /** Words that control a voice conversation, in English, Hinglish and Hindi. */
 // \b does not work next to Indian scripts, so word edges are spaces or punctuation
 // Spoken commands, choices and field names live in data/voiceWords so the phone helpline can use them too
-export { VOICE_COMMANDS, findField, spokenIndex } from '../../data/voiceWords';
+export { VOICE_COMMANDS, findField, spokenIndex, spokenYesNo } from '../../data/voiceWords';
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A stored value as it should be read aloud: "15/08/1990" → "15 August 1990", digits one by one. */
+export function speakable(value: string, type: string): string {
+  const date = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (date) return `${Number(date[1])} ${MONTH_NAMES[Number(date[2]) - 1] || date[2]} ${date[3]}`;
+  if (['mobile', 'pincode', 'account'].includes(type)) return value.split('').join(' ');
+  if (type === 'money' && /^\d+$/.test(value)) return `₹${Number(value).toLocaleString('en-IN')}`;
+  return value;
+}

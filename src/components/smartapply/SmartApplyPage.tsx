@@ -6,10 +6,10 @@ import { autofillApi, type DraftView, type SchemeInfo, type SessionState } from 
 import { Alert, Dialog, EmptyState, SkeletonCard, Spinner, StatusPill, Stepper } from '../ui/kit';
 import { ConflictResolver } from './ConflictResolver';
 import { DocumentStep, type Preview } from './DocumentStep';
-import { MissingQuestions } from './MissingQuestions';
+import { MissingQuestions, type AnswerOutcome } from './MissingQuestions';
 import { OutputStep } from './OutputStep';
 import { ReviewStep } from './ReviewStep';
-import { VOICE_COMMANDS, useDictation, useVoiceTurns } from './media';
+import { VOICE_COMMANDS, useDictation, useVoiceTurns, spokenYesNo } from './media';
 import { prefetchTranslations, spokenIn } from '../../services/translate';
 import { VoiceDocs } from './VoiceDocs';
 
@@ -224,7 +224,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     const points = t.consentPoints.map((x) => x.replace('{days}', String(session?.retentionDays ?? '')));
     const heard = await askV(pv.consent(points));
     if (heard === null) return;
-    if ((VOICE_COMMANDS.agree.test(heard) || VOICE_COMMANDS.yes.test(heard)) && !VOICE_COMMANDS.no.test(heard)) return giveConsent();
+    if (spokenYesNo(heard) === 'yes') return giveConsent();
     setConsentFor(null);
     sayV(heard ? pv.noConsent : pv.stopped);
   };
@@ -260,7 +260,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         setMatch({ scheme: r.scheme, reason: r.reason, related: r.relatedSchemes || [] });
         const reply = await askV(pv.found(r.scheme.name.split(' (')[0]));
         if (reply === null) return;
-        if ((VOICE_COMMANDS.yes.test(reply) || VOICE_COMMANDS.agree.test(reply)) && !VOICE_COMMANDS.no.test(reply)) {
+        if (spokenYesNo(reply) === 'yes') {
           setChoosingByVoice(false);
           return start(r.scheme.schemeId, 'voice');
         }
@@ -303,17 +303,28 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     onSession(await autofillApi.session());
   };
 
-  const answer = async (key: string, text: string, via: 'typed' | 'voice') => {
+  const answer = async (key: string, text: string, via: 'typed' | 'voice'): Promise<AnswerOutcome> => {
     if (!draft) return 'No application open';
     try {
       const res = await autofillApi.answer(draft.id, key, text, via === 'voice' ? 'voice' : 'chat');
       applyDraft(res.draft, res.fieldsHash);
       // The profile summary elsewhere can catch up in the background — do not hold up the next question
       autofillApi.session().then(onSession).catch(() => {});
-      return res.result.ok ? res.result.error || null : res.result.error || 'I could not understand that — please try again.';
+      if (!res.result.ok) return res.result.error || 'I could not understand that — please try again.';
+      if (res.result.error) return res.result.error;
+      return res.result.value ? { said: res.result.value, confirm: res.result.confirm } : null;
     } catch (err: any) {
       return err.message;
     }
+  };
+
+  /** The person said an answer was understood wrongly: clear it so the question comes back. */
+  const clearAnswer = async (key: string) => {
+    if (!draft) return;
+    try {
+      const res = await autofillApi.editFields(draft.id, { [key]: '' });
+      applyDraft(res.draft, res.fieldsHash);
+    } catch {}
   };
 
   /* ── Loading ───────────────────────────────────────────────────── */
@@ -715,6 +726,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
                     speechLocale={langConfig.speechLocale}
                     questions={questions}
                     onAnswer={answer}
+                    onClear={clearAnswer}
                     voiceStart={questionVoice}
                     voiceIntro={voiceIntro}
                     onVoiceFinished={() => startDocVoice(true)}

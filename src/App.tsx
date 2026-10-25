@@ -277,8 +277,15 @@ export default function App() {
   // Any assistant channel that hears "teach me…" offers the matching Learning Hub course
   useEffect(() => {
     const onLearn = (e: Event) => {
+      const detail = (e as CustomEvent<LearningEntry>).detail;
       setApplyIntent(null);
-      setLearnIntent((e as CustomEvent<LearningEntry>).detail);
+      // The voice assistants take the person to the course once they have finished speaking
+      if (detail.channel === 'voice' && (channelRef.current === 'voice_studio' || channelRef.current === 'home')) {
+        setLearnIntent(null);
+        aiService.whenSilent().then(() => openLearning(detail));
+        return;
+      }
+      setLearnIntent(detail);
     };
     window.addEventListener(LEARN_INTENT_EVENT, onLearn);
     return () => window.removeEventListener(LEARN_INTENT_EVENT, onLearn);

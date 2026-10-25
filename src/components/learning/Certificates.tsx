@@ -4,6 +4,9 @@ import type { LearningCourse } from '../../data/learningTracks';
 import { autofillApi } from '../../services/autofillApi';
 import { gradeExam, startExam, verifyCertificate, type Certificate, type ExamQuestion, type ExamResult } from '../../services/learnApi';
 import { Spinner } from '../ui/kit';
+import { CertificateCard, formatDate, printCertificate } from './CertificateCard';
+
+export { CertificateCard, CERTIFICATE_PRINT_CSS, printCertificate, verifyLink } from './CertificateCard';
 
 /**
  * UDAAN ONE certificates of completion: the final assessment that earns one, the certificate
@@ -11,78 +14,26 @@ import { Spinner } from '../ui/kit';
  * check by certificate ID.
  */
 
-const formatDate = (t: number) => new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-export const verifyLink = (id: string) => `${window.location.origin}/?verify=${id}`;
-
-/* ── The certificate ───────────────────────────────────────────────── */
-
-export const CertificateCard: React.FC<{ cert: Certificate; officialRoute?: { label: string; url: string } }> = ({ cert, officialRoute }) => (
-  <article className="print-certificate relative mx-auto w-full max-w-3xl overflow-hidden rounded-[22px] border-[6px] border-double border-saffron/70 bg-[#fffdf7] p-6 text-center text-navy shadow-card sm:p-10" aria-label="Certificate">
-    <div className="pointer-events-none absolute inset-3 rounded-[14px] border border-saffron/30" aria-hidden />
-    <div className="relative">
-      <div className="flex items-center justify-center gap-3">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-navy text-lg font-extrabold text-white" aria-hidden>
-          U1
-        </span>
-        <div className="text-left">
-          <p className="text-lg font-extrabold tracking-wide">UDAAN ONE</p>
-          <p className="text-[11px] text-muted">Learning Hub</p>
-        </div>
-      </div>
-      <p className="mt-6 text-xs font-bold uppercase tracking-[0.3em] text-saffron-600">Certificate of Completion</p>
-      <p className="mt-5 text-sm text-muted">This is to certify that</p>
-      <p translate="no" className="mt-2 font-serif text-3xl font-bold sm:text-4xl">
-        {cert.name}
-      </p>
-      <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed sm:text-base">
-        has successfully completed the course <strong>{cert.courseTitle}</strong> on the UDAAN ONE Learning Hub, covering {cert.modules.length} modules, and passed the final assessment with a score of{' '}
-        <strong>
-          {cert.score} / {cert.total}
-        </strong>
-        .
-      </p>
-      {cert.modules.length > 0 && <p className="mx-auto mt-3 max-w-xl text-xs leading-relaxed text-muted">{cert.modules.join(' · ')}</p>}
-      <div className="mt-8 grid gap-4 text-sm sm:grid-cols-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted">Date</p>
-          <p className="font-semibold">{formatDate(cert.issuedAt)}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted">Certificate ID</p>
-          <p translate="no" className="font-mono font-semibold tracking-wider">
-            {cert.id}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted">Check it at</p>
-          <p translate="no" className="break-all font-mono text-xs font-semibold">
-            {verifyLink(cert.id).replace(/^https?:\/\//, '')}
-          </p>
-        </div>
-      </div>
-      <p className="mx-auto mt-8 max-w-xl text-[11px] leading-relaxed text-muted">
-        A UDAAN ONE learning certificate for completing this course and its assessment. It is not an NSQF, Sector Skill Council or government certification.
-        {officialRoute && ` For the official certification: ${officialRoute.label}.`}
-      </p>
-    </div>
-  </article>
-);
-
-export const CertificateDialog: React.FC<{ cert: Certificate; officialRoute?: { label: string; url: string }; onClose: () => void }> = ({ cert, officialRoute, onClose }) => (
-  <div className="fixed inset-0 z-[70] overflow-y-auto bg-navy/70 p-4 backdrop-blur-sm print:bg-white print:p-0" role="dialog" aria-modal="true" aria-label="Your certificate">
-    <div className="mx-auto my-6 max-w-3xl print:m-0">
-      <div className="mb-3 flex flex-wrap justify-end gap-2 print:hidden">
-        <button onClick={() => window.print()} className="btn btn-success">
+export const CertificateDialog: React.FC<{ cert: Certificate; officialRoute?: { label: string; url: string }; onClose: () => void }> = ({ cert, officialRoute, onClose }) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  return (
+  <div className="fixed inset-0 z-[70] overflow-y-auto bg-navy/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Your certificate">
+    <div className="mx-auto my-6 max-w-3xl">
+      <div className="mb-3 flex flex-wrap justify-end gap-2">
+        <button onClick={() => printCertificate(ref.current?.querySelector<HTMLElement>('.print-certificate') || null, cert)} className="btn btn-success">
           <Printer className="h-4 w-4" aria-hidden /> Print or save as PDF
         </button>
         <button onClick={onClose} className="btn btn-on-dark" aria-label="Close">
           <X className="h-4 w-4" aria-hidden /> Close
         </button>
       </div>
-      <CertificateCard cert={cert} officialRoute={officialRoute} />
+      <div ref={ref}>
+        <CertificateCard cert={cert} officialRoute={officialRoute} />
+      </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ── The final assessment ──────────────────────────────────────────── */
 
@@ -288,7 +239,12 @@ export const VerifyCertificate: React.FC<{ id: string }> = ({ id }) => {
             <p className="rounded-2xl bg-green-50 p-4 font-semibold text-green" role="status">
               This is a genuine UDAAN ONE certificate.
             </p>
-            <CertificateCard cert={state.cert} />
+            <div id="verified-certificate">
+              <CertificateCard cert={state.cert} />
+            </div>
+            <button onClick={() => printCertificate(document.querySelector<HTMLElement>('#verified-certificate .print-certificate'), state.cert!)} className="btn btn-success">
+              <Printer className="h-4 w-4" aria-hidden /> Print or save as PDF
+            </button>
           </>
         ) : (
           <p className="rounded-2xl bg-coral-50 p-4 font-semibold text-coral-600" role="status">

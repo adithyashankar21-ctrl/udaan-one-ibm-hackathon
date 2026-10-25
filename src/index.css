@@ -352,35 +352,5 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
   background: linear-gradient(135deg, #ffffff 0%, #fff8eb 55%, #ecf8f3 100%);
 }
 
-/* Print / Save as PDF: only the open document (e.g. Kaushal Patra) is printed */
-@media print {
-  body:has(.print-area) * { visibility: hidden; }
-  body:has(.print-area) .print-area,
-  body:has(.print-area) .print-area * { visibility: visible; }
-  body:has(.print-area) .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; }
-  .print\:hidden { display: none !important; }
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-}
-
-/* Printing a certificate: only the certificate, on one landscape page */
-@media print {
-  @page {
-    size: A4 landscape;
-    margin: 10mm;
-  }
-  body * {
-    visibility: hidden;
-  }
-  .print-certificate,
-  .print-certificate * {
-    visibility: visible;
-  }
-  .print-certificate {
-    position: absolute;
-    inset: 0;
-    margin: auto;
-    box-shadow: none;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-}
+/* Roadmaps and certificates print through printElement (src/services/printDocument.ts), each on
+   its own page, so printing the app itself needs no special rules */

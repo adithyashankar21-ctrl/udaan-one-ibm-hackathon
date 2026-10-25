@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis, SavedRoadmap } from '../types';
 import { RoadmapAsk } from './RoadmapAsk';
+import { ROADMAP_PRINT_CSS, RoadmapPrint } from './RoadmapPrint';
+import { pdfTitle, printElement } from '../services/printDocument';
 import { rankSchemesForProfile } from '../data/schemeCatalog';
 import { SUPPORTED_LANGUAGES } from '../data/languages';
 import { aiService } from '../services/aiService';
@@ -73,6 +75,7 @@ const Milestone: React.FC<{
 
 export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, onClose, profile, roadmap, currentLanguage = 'en', savedSchemeIds = [], history = [], activeId, onPick, onAsk, busy }) => {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const printRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -166,7 +169,13 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
               <button onClick={listen} className="btn btn-accent">
                 <Volume2 className="h-4 w-4" /> Listen in {lang.nativeName}
               </button>
-              <button onClick={() => window.print()} className="btn btn-on-dark">
+              <button
+                onClick={() => {
+                  const doc = printRef.current?.firstElementChild as HTMLElement | null;
+                  if (doc) printElement(doc, { title: pdfTitle('UDAAN ONE roadmap', roadmap.goal || profile.name), css: ROADMAP_PRINT_CSS });
+                }}
+                className="btn btn-on-dark"
+              >
                 <Download className="h-4 w-4" /> Save as PDF / Print
               </button>
             </div>
@@ -292,6 +301,19 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 <p className="mt-4 text-sm text-muted">Need help? Call the toll-free helpline 1800-11-2529.</p>
               </Milestone>
             </ol>
+
+            {/* The printed / PDF version: hidden here (so it is translated with the page), printed on its own */}
+            <div ref={printRef} className="hidden" aria-hidden="true">
+              <RoadmapPrint
+                roadmap={roadmap}
+                name={profile.name}
+                details={[profile.district && `${profile.district}, ${profile.state}`, profile.education, profile.traditionalTrade || profile.currentOccupation].filter(Boolean).join(' · ')}
+                dateStr={dateStr}
+                schemes={schemes.map(({ s, e }) => ({ id: s.id, name: s.name, officialUrl: s.officialUrl, officialLabel: s.officialLabel, likely: e.level === 'likely' }))}
+                documents={documents}
+                nextActions={nextActions}
+              />
+            </div>
 
             {(onAsk || history.length > 1) && (
               <section className="mt-2 space-y-6 border-t border-line pt-8 print:hidden">

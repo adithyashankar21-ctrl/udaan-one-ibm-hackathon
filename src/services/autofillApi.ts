@@ -378,6 +378,13 @@ export function toBeneficiaryPartial(fields: Partial<Record<ProfileKey, FieldInf
     if (!f?.value) continue;
     (out as any)[bk] = pk === 'socialCategory' && f.value === 'SC' ? 'Scheduled Caste (SC)' : f.value;
   }
+  // The app's gender is one of its options; a misheard "I male" still means Male
+  if (out.gender !== undefined) {
+    const g = String(out.gender).toLowerCase();
+    const known = /female|woman|lady|girl|महिला|स्त्री/.test(g) ? 'Female' : /\bmale\b|\bman\b|पुरुष/.test(g) ? 'Male' : /trans/.test(g) ? 'Transgender' : null;
+    if (known) out.gender = known as BeneficiaryProfile['gender'];
+    else delete out.gender;
+  }
   if (out.currentOccupation && !out.traditionalTrade) out.traditionalTrade = out.currentOccupation;
   if (out.annualFamilyIncome) out.householdIncome = out.annualFamilyIncome;
   return out;

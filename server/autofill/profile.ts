@@ -6,7 +6,7 @@
 import crypto from 'crypto';
 import { PROFILE_FIELD_MAP, type ProfileKey } from '../../src/data/autofillSchema';
 import type { Candidate, FieldRecord, ProfileState } from './types';
-import { normaliseDate, normaliseMoney } from './validate';
+import { normalise, normaliseDate, normaliseMoney } from './validate';
 
 /** Comparable form of a value, so "RAMESH  Kumar" and "Ramesh Kumar" count as the same. */
 export function comparable(key: ProfileKey, value: string): string {
@@ -141,3 +141,34 @@ export const SOURCE_LABELS: Record<string, string> = {
   helpline: 'Helpline',
   answer: 'Your answer',
 };
+
+/**
+ * A choice saved before answers were understood can hold the words as heard ("I male"). Such a
+ * value is read again by the same rules as an answer and kept as the option it clearly means;
+ * a value whose meaning is not clear is left as it is.
+ */
+export function repairChoices(profile: ProfileState): boolean {
+  let changed = false;
+  for (const [key, field] of Object.entries(profile.fields)) {
+    const def = PROFILE_FIELD_MAP[key as ProfileKey];
+    if (!field || def?.type !== 'select' || !def.options || def.options.includes(field.value)) continue;
+    const n = normalise('select', field.value, def.options);
+    if (n.ok && n.value) {
+      field.value = n.value;
+      changed = true;
+    }
+  }
+  // A conflict between "I male" and "Male" is no conflict once both are read the same way
+  const meaning = (key: ProfileKey, v: string) => {
+    const def = PROFILE_FIELD_MAP[key];
+    if (def?.type !== 'select' || !def.options) return comparable(key, v);
+    const n = normalise('select', v, def.options);
+    return n.ok && n.value ? n.value : v;
+  };
+  const before = profile.conflicts.length;
+  profile.conflicts = profile.conflicts.filter((c) => {
+    const current = profile.fields[c.key]?.value;
+    return !(current && PROFILE_FIELD_MAP[c.key]?.type === 'select' && c.candidates.every((x) => meaning(c.key, x.value) === meaning(c.key, current)));
+  });
+  return changed || profile.conflicts.length !== before;
+}

@@ -22,7 +22,7 @@ import { extractDocument, type Generate } from './ocr';
 import { understandAnswer } from './understand';
 import { analyseOfficialForm, fillOfficialForm, generateDraftPdf } from './pdf';
 import { checkPhoto } from './photo';
-import { SOURCE_LABELS, forgetDocument, mergeCandidate, resolveConflict } from './profile';
+import { SOURCE_LABELS, forgetDocument, mergeCandidate, repairChoices, resolveConflict } from './profile';
 import { detectIntent, listSchemes, recommend, schemeInfo } from './schemes';
 import { authEnabled, bearerToken, verifyUser } from '../auth';
 import { INTERNAL_KEY } from '../internal';
@@ -123,9 +123,16 @@ interface Ctx {
   token: string | null;
 }
 
+/** Loads a session, putting garbled saved choices right on the way ("I male" → Male). */
+function load(hash: string): SessionData | null {
+  const session = loadSession(hash);
+  if (session && repairChoices(session.profile)) saveSession(session);
+  return session;
+}
+
 function ctx(req: Request): Ctx {
   const token = readCookie(req, COOKIE);
-  return { token, session: token ? loadSession(hashToken(token)) : null };
+  return { token, session: token ? load(hashToken(token)) : null };
 }
 
 function profileView(session: SessionData) {
@@ -283,7 +290,7 @@ export function createAutofillRouter(generate: Generate) {
       const token = readCookie(req, COOKIE);
       if (!token) return res.status(401).json({ error: 'consent_required' });
       const run = async () => {
-        const session = loadSession(hashToken(token));
+        const session = load(hashToken(token));
         if (!session || !session.consent) return res.status(401).json({ error: 'consent_required' });
         try {
           await handler(req, res, session);
@@ -312,7 +319,7 @@ export function createAutofillRouter(generate: Generate) {
     const token = readCookie(req, COOKIE);
     if (!token) return res.json(sessionPayload(null));
     await serial(hashToken(token), () => {
-      const session = loadSession(hashToken(token));
+      const session = load(hashToken(token));
       // Keep the session alive, but do not rewrite the file on every refresh
       if (session && Date.now() - session.lastSeen > 60_000) saveSession(session);
       res.json(sessionPayload(session));

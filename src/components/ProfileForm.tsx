@@ -30,7 +30,9 @@ function validate(p: BeneficiaryProfile): Errors {
   const age = Number(p.age);
   if (p.age !== '' && (!Number.isFinite(age) || age < 14 || age > 100)) e.age = 'Enter an age between 14 and 100';
   if (p.phoneNumber && !/^[6-9]\d{9}$/.test(p.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Enter a 10-digit mobile number';
-  if (p.aadhaarNumber && !/^\d{12}$/.test(p.aadhaarNumber.replace(/\s/g, ''))) e.aadhaarNumber = 'Aadhaar has 12 digits';
+  // Only the last 4 digits are kept, so a saved Aadhaar comes back as "XXXX XXXX 1234": that, the last 4 digits, or all 12 are fine
+  const aadhaar = (p.aadhaarNumber || '').replace(/\s/g, '');
+  if (aadhaar && !/^(\d{12}|\d{4}|X{8}\d{4})$/i.test(aadhaar)) e.aadhaarNumber = 'Aadhaar has 12 digits (or give the last 4)';
   if (p.pincode && !/^\d{6}$/.test(p.pincode)) e.pincode = 'PIN code has 6 digits';
   if (p.bankIfscCode && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(p.bankIfscCode.toUpperCase())) e.bankIfscCode = 'IFSC looks like SBIN0001234';
   return e;
@@ -54,6 +56,8 @@ const Field: React.FC<{ id: string; label: string; hint?: string; error?: string
     ) : null}
   </div>
 );
+
+const GENDERS: string[] = ['Female', 'Male', 'Transgender', 'Prefer not to say'];
 
 export const ProfileForm: React.FC<ProfileFormProps> = ({ isOpen, onClose, profile, onSaveProfile }) => {
   const [form, setForm] = useState<BeneficiaryProfile>(profile);
@@ -88,6 +92,13 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ isOpen, onClose, profi
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
       if (Object.keys(errs).some((k) => !['name', 'age'].includes(k))) setShowMore(true);
+      // Show the person what stopped the save: the first field with a problem
+      const first = Object.keys(errs)[0];
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(`[aria-describedby*="${first}"], #pf-${first === 'aadhaarNumber' ? 'aadhaar' : first}`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el?.focus();
+      }, 50);
       return;
     }
     onSaveProfile({
@@ -126,7 +137,9 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ isOpen, onClose, profi
                 <input id="pf-age" inputMode="numeric" value={form.age} onChange={(e) => set('age', e.target.value.replace(/\D/g, '').slice(0, 3))} className={inputCls(errors.age)} {...aria('age')} />
               </Field>
               <Field id="pf-gender" label="Gender">
-                <select id="pf-gender" value={form.gender} onChange={(e) => set('gender', e.target.value as BeneficiaryProfile['gender'])} className={inputCls()}>
+                <select id="pf-gender" value={GENDERS.includes(form.gender) ? form.gender : ''} onChange={(e) => set('gender', e.target.value as BeneficiaryProfile['gender'])} className={inputCls()}>
+                  {/* A saved value that is none of these shows as not chosen, never as the first option */}
+                  {!GENDERS.includes(form.gender) && <option value="">Choose…</option>}
                   <option value="Female">Female</option>
                   <option value="Male">Male</option>
                   <option value="Transgender">Transgender</option>
@@ -212,7 +225,7 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ isOpen, onClose, profi
                     <input id="pf-parent" value={form.fatherSpouseName || ''} onChange={(e) => set('fatherSpouseName', e.target.value)} className={inputCls()} />
                   </Field>
                   <Field id="pf-aadhaar" label="Aadhaar number" error={errors.aadhaarNumber} hint="Only used to fill your draft on this device">
-                    <input id="pf-aadhaar" inputMode="numeric" value={form.aadhaarNumber || ''} onChange={(e) => set('aadhaarNumber', e.target.value.replace(/[^\d ]/g, '').slice(0, 14))} className={inputCls(errors.aadhaarNumber)} autoComplete="off" {...aria('aadhaarNumber')} />
+                    <input id="pf-aadhaar" inputMode="numeric" value={form.aadhaarNumber || ''} onChange={(e) => set('aadhaarNumber', e.target.value.replace(/[^\dXx ]/g, '').slice(0, 14))} className={inputCls(errors.aadhaarNumber)} autoComplete="off" {...aria('aadhaarNumber')} />
                   </Field>
                   <Field id="pf-pin" label="PIN code" error={errors.pincode}>
                     <input id="pf-pin" inputMode="numeric" value={form.pincode || ''} onChange={(e) => set('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))} className={inputCls(errors.pincode)} autoComplete="postal-code" {...aria('pincode')} />

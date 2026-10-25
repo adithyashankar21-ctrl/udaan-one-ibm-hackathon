@@ -34,7 +34,6 @@ import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
 import { saveLanguage, savedLanguage } from './components/AuthGate';
 import { ProfileSetup, profileComplete } from './components/ProfileSetup';
-import { CallMeCard } from './components/CallMeCard';
 import { FORM_SCHEMA_MAP } from './data/autofillSchema';
 import { LOAN_WORDS } from './data/loanCatalog';
 import { getSmartApplyStrings } from './data/smartApplyStrings';
@@ -301,12 +300,13 @@ export default function App() {
   };
 
   /** Share details the person gives in any channel with the Smart Apply profile (after consent). */
-  const syncToAutofill = (partial: Partial<BeneficiaryProfile>, source: string) => {
+  /** `confirm`: the person typed these into their profile themselves, so they replace what was there. */
+  const syncToAutofill = (partial: Partial<BeneficiaryProfile>, source: string, confirm = false) => {
     if (!autofillSession?.consent) return;
     const updates = toAutofillUpdates(partial);
     if (Object.keys(updates).length === 0) return;
     autofillApi
-      .updateProfile(updates, source)
+      .updateProfile(updates, source, confirm)
       .then(handleAutofillSession)
       .catch(() => {});
   };
@@ -602,12 +602,9 @@ export default function App() {
             mode={currentChannel}
             onNavigate={setCurrentChannel}
             after={
-              currentChannel === 'ivr' ? (
-                <div className="space-y-6">
-                  <CallMeCard mobile={autofillSession?.profile?.fields.mobile?.value} />
-                  <HelplineResume language={currentLanguage} langConfig={langConfig} />
-                </div>
-              ) : undefined
+              // The phone helpline is the in-browser prototype for now; the real Twilio line
+              // (CallMeCard, server/voice) stays in the code but is not offered
+              currentChannel === 'ivr' ? <HelplineResume language={currentLanguage} langConfig={langConfig} /> : undefined
             }
           >
             {currentChannel === 'kiosk' && (
@@ -730,8 +727,13 @@ export default function App() {
           onClose={() => setIsProfileModalOpen(false)}
           profile={userProfile}
           onSaveProfile={(updated) => {
+            // Only what the person changed is sent, as their own confirmed correction: it replaces a
+            // value read from a document or said earlier (and settles any open conflict for it)
+            const changed = Object.fromEntries(
+              Object.entries(updated).filter(([k, v]) => String(v ?? '') !== String((userProfile as any)[k] ?? ''))
+            ) as Partial<BeneficiaryProfile>;
             setUserProfile(updated);
-            syncToAutofill(updated, 'typed');
+            syncToAutofill(changed, 'typed', true);
             showNotification(`Profile updated for ${updated.name || 'you'}`);
           }}
         />

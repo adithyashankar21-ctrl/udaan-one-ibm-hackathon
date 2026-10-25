@@ -9,7 +9,8 @@ import {
   BeneficiaryProfile,
   ChannelMode,
   LanguageCode,
-  LivelihoodAnalysis
+  LivelihoodAnalysis,
+  SavedRoadmap
 } from './types';
 import { SiteHeader, UdaanOneLogo } from './components/shell/SiteHeader';
 import { HomePage } from './components/pages/HomePage';
@@ -27,7 +28,6 @@ import { IvrHelpline } from './components/IvrHelpline';
 import { DistrictExplorer } from './components/DistrictExplorer';
 import { KaushalPatraModal } from './components/KaushalPatraModal';
 import { ProfileForm } from './components/ProfileForm';
-import { UnifiedJourney } from './components/UnifiedJourney';
 import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
 import { SUPPORTED_LANGUAGES } from './data/languages';
@@ -50,6 +50,8 @@ import {
 import { LEARN_INTENT_EVENT, type LearningEntry } from './services/learnApi';
 import { COURSE_MAP } from './data/learningTracks';
 import { setPrivateValues } from './services/translate';
+import { ROADMAP_INTENT_EVENT, loadLocalRoadmaps, mergeRoadmaps, saveLocalRoadmaps, type RoadmapRequest } from './services/roadmaps';
+import { ModeShell, isAccessMode } from './components/shell/ModeShell';
 
 // Clean baseline profile for real citizen data entry
 const CLEAN_EMPTY_PROFILE: BeneficiaryProfile = {
@@ -85,16 +87,6 @@ const CLEAN_EMPTY_PROFILE: BeneficiaryProfile = {
 };
 
 
-// Access modes rendered on the navy immersive surface
-const LEGACY_MODES: ChannelMode[] = ['unified_journey', 'kiosk', 'whatsapp', 'ivr', 'district_map'];
-
-const LEGACY_TITLES: Partial<Record<ChannelMode, { title: string; desc: string }>> = {
-  unified_journey: { title: 'KaushalFill', desc: 'Guided profile, documents and roadmap journey.' },
-  kiosk: { title: 'Kiosk Mode', desc: 'Large, simple screens for shared public devices.' },
-  whatsapp: { title: 'WhatsApp Assistant', desc: 'Ask by voice note or text in a familiar chat layout.' },
-  ivr: { title: 'IVR Helpline', desc: 'A phone-style voice menu — no smartphone needed.' },
-  district_map: { title: 'District Opportunity Map', desc: 'Explore livelihood opportunities by district.' },
-};
 
 /** Where profile details come from, for provenance in the shared profile. */
 const SOURCE_FOR: Partial<Record<ChannelMode, string>> = {
@@ -113,6 +105,23 @@ function readSavedSchemes(): string[] {
   }
 }
 
+/** A person's details that must never be sent for translation: names (and their parts), contact, address, ID numbers, references. */
+function privateValuesOf(session: SessionState | null, profile?: BeneficiaryProfile): string[] {
+  const f = session?.profile?.fields || {};
+  const names = [f.fullName?.value, f.fatherSpouseName?.value, f.motherName?.value, profile?.name, profile?.fatherSpouseName];
+  return [
+    ...names,
+    // Parts of a name are shown on their own too ("Asha" in a greeting)
+    ...names.flatMap((n) => String(n || '').split(/\s+/).filter((w) => w.length >= 3)),
+    ...(['mobile', 'email', 'addressLine', 'pincode', 'aadhaar', 'panNumber', 'casteCertificateNumber', 'incomeCertificateNumber', 'bankAccountNumber', 'bankIfsc', 'rationCardNumber', 'passportNumber', 'voterIdNumber', 'drivingLicenceNumber', 'foreignPassportNumber', 'pioCardNumber'] as const).map((k) => f[k]?.value),
+    profile?.phoneNumber,
+    profile?.residentialAddress,
+    profile?.bankAccountNumber,
+    profile?.bplRationCardNumber,
+    ...(session?.drafts || []).map((d) => d.reference),
+  ].filter((v): v is string => Boolean(v));
+}
+
 export default function App() {
   const [currentChannel, setCurrentChannel] = useState<ChannelMode>('home');
   // The language chosen last time on this device (also on the sign-in screen)
@@ -127,7 +136,10 @@ export default function App() {
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const profileChecked = useRef(false);
   const [userProfile, setUserProfile] = useState<BeneficiaryProfile>(CLEAN_EMPTY_PROFILE);
-  const [roadmap, setRoadmap] = useState<LivelihoodAnalysis | null>(null);
+  // Career roadmaps are kept (this browser, and the account once there is one); the newest is shown
+  const [roadmaps, setRoadmaps] = useState<SavedRoadmap[]>(loadLocalRoadmaps);
+  const [roadmapId, setRoadmapId] = useState<string | null>(() => loadLocalRoadmaps()[0]?.id || null);
+  const roadmap: LivelihoodAnalysis | null = roadmaps.find((r) => r.id === roadmapId)?.roadmap || roadmaps[0]?.roadmap || null;
   const [isGeneratingRoadmap, setIsGeneratingRoadmap] = useState(false);
   const [isKaushalPatraOpen, setIsKaushalPatraOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -169,6 +181,7 @@ export default function App() {
 
   /** Keep the app's profile in step with the shared Smart Apply profile. */
   const handleAutofillSession = useCallback((s: SessionState) => {
+    setPrivateValues(privateValuesOf(s));
     setAutofillSession(s);
     if (!profileChecked.current) {
       profileChecked.current = true;
@@ -204,21 +217,10 @@ export default function App() {
       .catch(() => {});
   }, [hasConsent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The person's own details are never sent for translation (translations are shared by everyone)
+  // The person's own details are never sent for translation (translations are shared by everyone).
+  // Also set the moment a session arrives (handleAutofillSession), before the name is on screen.
   useEffect(() => {
-    const f = autofillSession?.profile?.fields || {};
-    const names = [f.fullName?.value, f.fatherSpouseName?.value, f.motherName?.value, userProfile.name, userProfile.fatherSpouseName];
-    setPrivateValues([
-      ...names,
-      // Parts of a name are shown on their own too ("Asha" in a greeting)
-      ...names.flatMap((n) => String(n || '').split(/\s+/).filter((w) => w.length >= 3)),
-      ...(['mobile', 'email', 'addressLine', 'pincode', 'aadhaar', 'panNumber', 'casteCertificateNumber', 'incomeCertificateNumber', 'bankAccountNumber', 'bankIfsc', 'rationCardNumber', 'passportNumber', 'voterIdNumber', 'drivingLicenceNumber', 'foreignPassportNumber', 'pioCardNumber'] as const).map((k) => f[k]?.value),
-      userProfile.phoneNumber,
-      userProfile.residentialAddress,
-      userProfile.bankAccountNumber,
-      userProfile.bplRationCardNumber,
-      ...(autofillSession?.drafts || []).map((d) => d.reference),
-    ]);
+    setPrivateValues(privateValuesOf(autofillSession, userProfile));
   }, [autofillSession, userProfile]);
 
   // Every page change starts at the top of the new page
@@ -260,6 +262,37 @@ export default function App() {
     return () => window.removeEventListener(LEARN_INTENT_EVENT, onLearn);
   }, []);
 
+  // Any assistant channel that hears "make me a career roadmap…" / "how do I become…" makes one
+  useEffect(() => {
+    const onRoadmap = (e: Event) => {
+      setApplyIntent(null);
+      setLearnIntent(null);
+      makeRoadmapRef.current((e as CustomEvent<RoadmapRequest>).detail?.request);
+    };
+    window.addEventListener(ROADMAP_INTENT_EVENT, onRoadmap);
+    return () => window.removeEventListener(ROADMAP_INTENT_EVENT, onRoadmap);
+  }, []);
+
+  // With an account, roadmaps follow the person to any device: merge this browser's with the account's once
+  const roadmapsSynced = useRef(false);
+  useEffect(() => {
+    if (!autofillSession?.consent || roadmapsSynced.current) return;
+    roadmapsSynced.current = true;
+    autofillApi
+      .roadmaps()
+      .then((fromAccount) => {
+        const local = loadLocalRoadmaps();
+        local.filter((r) => !fromAccount.some((a) => a.id === r.id)).forEach((r) => autofillApi.saveRoadmap(r).catch(() => {}));
+        const merged = mergeRoadmaps(fromAccount, local);
+        saveLocalRoadmaps(merged);
+        setRoadmaps(merged);
+        setRoadmapId((id) => (id && merged.some((r) => r.id === id) ? id : merged[0]?.id || null));
+      })
+      .catch(() => {
+        roadmapsSynced.current = false;
+      });
+  }, [autofillSession?.consent]);
+
   /** Opens the Learning Hub at a course, a custom topic or a doubt. */
   const openLearning = (entry: Omit<LearningEntry, 'nonce'>) => {
     setLearnIntent(null);
@@ -299,32 +332,46 @@ export default function App() {
   // The newest unfinished draft, so chat channels can answer its questions in place
   const openDraftSummary = (autofillSession?.drafts || []).filter((d) => d.status.code === 'collecting').sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
-  const handleGenerateRoadmap = async () => {
-    if (!userProfile.name) {
+  const keepRoadmap = (saved: SavedRoadmap) => {
+    setRoadmaps((list) => {
+      const next = mergeRoadmaps([saved], list);
+      saveLocalRoadmaps(next);
+      return next;
+    });
+    setRoadmapId(saved.id);
+    if (autofillSession?.consent) autofillApi.saveRoadmap(saved).catch(() => {});
+  };
+
+  /**
+   * Makes a career roadmap. `request` is the goal in the person's own words (typed, spoken, or
+   * heard by the chat, WhatsApp or voice assistant); without one it is made from the profile.
+   */
+  const makeRoadmap = async (request?: string) => {
+    const goal = (request || '').trim();
+    if (!goal && !userProfile.name) {
       setIsProfileModalOpen(true);
-      showNotification('Please provide candidate name and trade first.');
+      showNotification('Tell us your goal, or add your name and work to your profile first.');
       return;
     }
-
     setIsGeneratingRoadmap(true);
-    showNotification(`Mapping NSQF skills & PM-AJAY grants in ${langConfig.name}...`);
-
+    showNotification(goal ? `Making your roadmap: “${goal.slice(0, 60)}”…` : `Mapping NSQF skills & PM-AJAY grants in ${langConfig.name}...`);
     try {
-      const result = await aiService.generateLivelihoodMapping(userProfile, langConfig.name);
-      setRoadmap(result);
-      setIsGeneratingRoadmap(false);
-      showNotification('Kaushal Patra roadmap ready');
-      setIsKaushalPatraOpen(true);
+      const result = await aiService.generateLivelihoodMapping(userProfile, langConfig.name, goal || undefined);
+      keepRoadmap({ id: `rm-${Date.now().toString(36)}`, createdAt: Date.now(), roadmap: result });
+      showNotification(result.fallback ? 'Roadmap prepared with general guidance' : 'Your career roadmap is ready');
     } catch (err: any) {
       console.error('Roadmap generation error:', err);
+      showNotification('Could not make the roadmap just now. Please try again.');
+    } finally {
       setIsGeneratingRoadmap(false);
-      showNotification('Roadmap prepared with general guidance');
       setIsKaushalPatraOpen(true);
     }
   };
+  /** For buttons that make a roadmap from the profile (they pass a click event, not a goal). */
+  const handleGenerateRoadmap = () => makeRoadmap();
+  const makeRoadmapRef = useRef(makeRoadmap);
+  makeRoadmapRef.current = makeRoadmap;
 
-  const isLegacyMode = LEGACY_MODES.includes(currentChannel);
-  const legacyTitle = LEGACY_TITLES[currentChannel];
   const intentScheme = applyIntent?.schemeId ? FORM_SCHEMA_MAP[applyIntent.schemeId] : null;
 
   return (
@@ -479,6 +526,8 @@ export default function App() {
             onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
             onNavigate={setCurrentChannel}
             onLearn={(topic, context) => openLearning({ topic, context })}
+            onAskRoadmap={makeRoadmap}
+            isGeneratingRoadmap={isGeneratingRoadmap}
           />
         )}
 
@@ -548,85 +597,59 @@ export default function App() {
           />
         )}
 
-        {isLegacyMode && (
-          <>
-            {legacyTitle && (
-              <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="eyebrow">Access mode</p>
-                  <h1 className="mt-2 text-3xl font-extrabold text-navy">{legacyTitle.title}</h1>
-                  <p className="mt-1 text-muted">{legacyTitle.desc}</p>
-                </div>
-                <button onClick={() => setCurrentChannel('home')} className="btn btn-outline">
-                  Back to home
-                </button>
-              </header>
-            )}
-            <div className="immersive space-y-6">
-              {currentChannel === 'unified_journey' && (
-                <UnifiedJourney
-                  currentLanguage={currentLanguage}
-                  langConfig={langConfig}
-                  userProfile={userProfile}
-                  onUpdateProfile={handleUpdateProfile}
-                  roadmap={roadmap}
-                  onGenerateRoadmap={handleGenerateRoadmap}
-                  isGeneratingRoadmap={isGeneratingRoadmap}
-                  onOpenKaushalPatraModal={() => setIsKaushalPatraOpen(true)}
-                />
-              )}
-
-              {currentChannel === 'kiosk' && (
-                <KioskMode
-                  currentLanguage={currentLanguage}
-                  userProfile={userProfile}
-                  onUpdateProfile={handleUpdateProfile}
-                  onGenerateRoadmap={handleGenerateRoadmap}
-                  isGeneratingRoadmap={isGeneratingRoadmap}
-                  roadmap={roadmap}
-                  onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
-                />
-              )}
-
-              {currentChannel === 'whatsapp' && (
-                <>
-                  <WhatsAppVoiceBot
-                    currentLanguage={currentLanguage}
-                    userProfile={userProfile}
-                    onUpdateProfile={handleUpdateProfile}
-                    onGenerateRoadmap={handleGenerateRoadmap}
-                    roadmap={roadmap}
-                    onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
-                    onSession={handleAutofillSession}
-                    openDraft={openDraftSummary ? { id: openDraftSummary.id, name: openDraftSummary.schemeName } : null}
-                  />
-                </>
-              )}
-
-              {currentChannel === 'ivr' && (
-                <>
-                  <IvrHelpline
-                    currentLanguage={currentLanguage}
-                    userProfile={userProfile}
-                    onUpdateProfile={handleUpdateProfile}
-                    onGenerateRoadmap={handleGenerateRoadmap}
-                    roadmap={roadmap}
-                    onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
-                  />
+        {isAccessMode(currentChannel) && (
+          <ModeShell
+            mode={currentChannel}
+            onNavigate={setCurrentChannel}
+            after={
+              currentChannel === 'ivr' ? (
+                <div className="space-y-6">
                   <CallMeCard mobile={autofillSession?.profile?.fields.mobile?.value} />
                   <HelplineResume language={currentLanguage} langConfig={langConfig} />
-                </>
-              )}
+                </div>
+              ) : undefined
+            }
+          >
+            {currentChannel === 'kiosk' && (
+              <KioskMode
+                currentLanguage={currentLanguage}
+                userProfile={userProfile}
+                onUpdateProfile={handleUpdateProfile}
+                onGenerateRoadmap={handleGenerateRoadmap}
+                isGeneratingRoadmap={isGeneratingRoadmap}
+                roadmap={roadmap}
+                onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
+              />
+            )}
 
-              {currentChannel === 'district_map' && (
-                <DistrictExplorer
-                  userProfile={userProfile}
-                  onSelectDistrict={handleSelectDistrict}
-                  onGenerateRoadmap={handleGenerateRoadmap}
-                />
-              )}
-            </div>
-          </>
+            {currentChannel === 'whatsapp' && (
+              <WhatsAppVoiceBot
+                currentLanguage={currentLanguage}
+                userProfile={userProfile}
+                onUpdateProfile={handleUpdateProfile}
+                onGenerateRoadmap={handleGenerateRoadmap}
+                roadmap={roadmap}
+                onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
+                onSession={handleAutofillSession}
+                openDraft={openDraftSummary ? { id: openDraftSummary.id, name: openDraftSummary.schemeName } : null}
+              />
+            )}
+
+            {currentChannel === 'ivr' && (
+              <IvrHelpline
+                currentLanguage={currentLanguage}
+                userProfile={userProfile}
+                onUpdateProfile={handleUpdateProfile}
+                onGenerateRoadmap={handleGenerateRoadmap}
+                roadmap={roadmap}
+                onOpenKaushalPatra={() => setIsKaushalPatraOpen(true)}
+              />
+            )}
+
+            {currentChannel === 'district_map' && (
+              <DistrictExplorer userProfile={userProfile} onSelectDistrict={handleSelectDistrict} onGenerateRoadmap={handleGenerateRoadmap} />
+            )}
+          </ModeShell>
         )}
       </main>
 
@@ -695,6 +718,11 @@ export default function App() {
           roadmap={roadmap}
           currentLanguage={currentLanguage}
           savedSchemeIds={savedSchemeIds}
+          history={roadmaps}
+          activeId={roadmapId || roadmaps[0]?.id}
+          onPick={setRoadmapId}
+          onAsk={makeRoadmap}
+          busy={isGeneratingRoadmap}
         />
 
         <ProfileForm

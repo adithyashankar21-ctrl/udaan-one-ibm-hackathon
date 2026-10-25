@@ -4,6 +4,7 @@ import { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { NSQF_COURSES } from '../../data/nsqfCourses';
 import { SchemesPage } from './SchemesPage';
 import { StatusPill } from '../ui/kit';
+import { RoadmapAsk } from '../RoadmapAsk';
 
 interface SkillsPageProps {
   profile: BeneficiaryProfile;
@@ -15,6 +16,9 @@ interface SkillsPageProps {
   onNavigate?: (mode: ChannelMode) => void;
   /** Opens the Learning Hub with a course built for this job role. */
   onLearn?: (topic: string, context?: string) => void;
+  /** Makes a career roadmap for a goal in the person's words ('' = from the profile). */
+  onAskRoadmap?: (request: string) => void;
+  isGeneratingRoadmap?: boolean;
 }
 
 /** Segmented switch shared by the two halves of "Skills & Opportunities". */
@@ -39,7 +43,7 @@ export const OpportunityTabs: React.FC<{ current: 'skills' | 'learning' | 'enter
     </div>
   ) : null;
 
-export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, ...props }) => {
+export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, onAskRoadmap, isGeneratingRoadmap, ...props }) => {
   const sectors = useMemo(() => ['All', ...Array.from(new Set(NSQF_COURSES.map((c) => c.sector.split(/[&/(]/)[0].trim())))], []);
   const [sector, setSector] = useState('All');
   const courses = NSQF_COURSES.filter((c) => sector === 'All' || c.sector.startsWith(sector));
@@ -56,6 +60,8 @@ export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, ...
             Skill India Digital Hub before enrolling.
           </p>
         </header>
+
+        {onAskRoadmap && <RoadmapAsk speechLocale={props.langConfig.speechLocale} busy={isGeneratingRoadmap} onAsk={onAskRoadmap} />}
 
         {onNavigate && (
           <button

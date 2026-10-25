@@ -147,4 +147,6 @@ export interface SessionData {
   learning?: { progress: string[]; courses: unknown[] };
   /** Schemes this person saved to look at later (scheme ids). */
   savedSchemes?: string[];
+  /** Career roadmaps made for this person, newest first. */
+  roadmaps?: Array<{ id: string; createdAt: number; roadmap: unknown }>;
 }

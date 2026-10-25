@@ -1,6 +1,7 @@
 import { BeneficiaryProfile, ChatMessage, LivelihoodAnalysis } from '../types';
 import { announceApplyIntent } from './autofillApi';
 import { announceLearnIntent } from './learnApi';
+import { announceRoadmapIntent } from './roadmaps';
 import { SUPPORTED_LANGUAGES } from '../data/languages';
 import { LANGUAGE_NAMES, offlineReply, scriptLanguage, toLanguageCode } from '../data/languageTools';
 
@@ -358,6 +359,10 @@ export const aiService = {
         const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content;
         announceApplyIntent({ schemeId: data.applyIntent.schemeId || null, channel: channelKind(channel), text: lastUser });
       }
+      // "Make me a career roadmap…" / "how do I become…": the app makes the step-by-step roadmap
+      if (data.roadmapIntent) {
+        announceRoadmapIntent({ request: data.roadmapIntent.request || undefined, channel: channelKind(channel) });
+      }
       // "Teach me…" requests: the assistant teaches in the conversation and offers the full course
       if (data.learnIntent) {
         const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content;
@@ -373,14 +378,16 @@ export const aiService = {
   },
 
   // Generate comprehensive NSQF Livelihood Mapping
+  /** `request`: the career goal in the person's words; without it the roadmap is made from the profile. */
   async generateLivelihoodMapping(
     profile: BeneficiaryProfile,
-    language: string
+    language: string,
+    request?: string
   ): Promise<LivelihoodAnalysis> {
     const response = await fetch('/api/ai/livelihood-map', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, language }),
+      body: JSON.stringify({ profile, language, request }),
     });
 
     if (!response.ok) {

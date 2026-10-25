@@ -876,6 +876,36 @@ export function createAutofillRouter(generate: Generate) {
     })
   );
 
+  /* Career roadmaps, kept with the account so they are there after a reload or on another device */
+
+  router.get(
+    '/roadmaps',
+    withSession((_req, res, session) => res.json({ roadmaps: session.roadmaps || [] }))
+  );
+
+  router.post(
+    '/roadmaps',
+    withSession((req, res, session) => {
+      const roadmap = req.body?.roadmap;
+      if (!roadmap || typeof roadmap !== 'object' || typeof roadmap.profileSummary !== 'string' || JSON.stringify(roadmap).length > 100_000) {
+        return res.status(400).json({ error: 'Not a roadmap' });
+      }
+      const id = typeof req.body?.id === 'string' && /^[\w-]{6,40}$/.test(req.body.id) ? req.body.id : crypto.randomBytes(8).toString('hex');
+      session.roadmaps = [{ id, createdAt: Date.now(), roadmap }, ...(session.roadmaps || []).filter((r) => r.id !== id)].slice(0, 10);
+      saveSession(session);
+      res.json({ roadmaps: session.roadmaps });
+    })
+  );
+
+  router.delete(
+    '/roadmaps/:id',
+    withSession((req, res, session) => {
+      session.roadmaps = (session.roadmaps || []).filter((r) => r.id !== req.params.id);
+      saveSession(session);
+      res.json({ roadmaps: session.roadmaps });
+    })
+  );
+
   router.get(
     '/saved-schemes',
     withSession((_req, res, session) => res.json({ ids: session.savedSchemes || [] }))

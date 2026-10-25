@@ -345,11 +345,12 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
 
           <section className="card p-5 sm:p-6" aria-labelledby="docs-h">
             <h2 id="docs-h" className="flex items-center gap-2 text-lg font-bold text-navy">
-              <FileText className="h-5 w-5 text-saffron-600" aria-hidden /> Livelihood roadmap
+              <FileText className="h-5 w-5 text-saffron-600" aria-hidden /> Career roadmap
             </h2>
             {roadmap ? (
               <>
-                <p className="mt-2 text-sm text-muted">Your AI-suggested Kaushal Patra roadmap is ready.</p>
+                {roadmap.goal && <p className="mt-2 font-semibold text-navy">{roadmap.goal}</p>}
+                <p className="mt-1 text-sm text-muted">Your AI-suggested Kaushal Patra roadmap is ready{roadmap.milestones?.length ? `, with ${roadmap.milestones.length} steps` : ''}.</p>
                 <button onClick={onOpenKaushalPatra} className="btn btn-success mt-4 w-full">Open roadmap</button>
               </>
             ) : (

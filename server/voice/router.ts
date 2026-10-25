@@ -74,6 +74,8 @@ const P = {
     'Hello, I am your UDAAN ONE helper. Ask me about government schemes, skill training, loans or documents. To apply for something, just say what you want to apply for. To continue an application you started, say continue my application, or press 4.',
   notHeard: 'Sorry, I did not hear you. Please speak after the beep, or press a key.',
   anythingElse: 'Is there anything else I can help you with?',
+  roadmapSteps: 'Here are your steps.',
+  roadmapApp: 'The full roadmap, with courses and schemes, is also in the UDAAN ONE app.',
   goodbye: 'Thank you for calling UDAAN ONE. Goodbye.',
   busy: 'Sorry, I could not get an answer just now. Please ask again.',
   consent: (name: string, days: number) =>
@@ -116,6 +118,8 @@ interface Call {
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   misses: number;
   pendingScheme?: string;
+  /** A career roadmap the caller asked for, made and read out on the next turn. */
+  pendingRoadmap?: string;
   reference?: string;
   /** Helpline token for the application being filled. */
   appToken?: string;
@@ -284,6 +288,11 @@ export function createVoiceRouter({ translate, selfBase }: { translate: Translat
     const reply = String(r?.data?.reply || '').trim();
     if (!reply) return gather(req, call, await say(req, call, [P.busy]));
     call.history.push({ role: 'assistant', content: reply });
+    // "How can I become…": say the reply now, then make and read out the roadmap on the next turn
+    if (r?.data?.roadmapIntent) {
+      call.pendingRoadmap = String(r.data.roadmapIntent.request || text).slice(0, 400);
+      return speak(req, reply, call.lang) + `<Redirect method="POST">${xml(`${publicBase(req)}/api/voice/roadmap`)}</Redirect>`;
+    }
     const schemeId = r?.data?.applyIntent?.schemeId;
     if (schemeId) {
       call.pendingScheme = schemeId;
@@ -315,6 +324,23 @@ export function createVoiceRouter({ translate, selfBase }: { translate: Translat
     const call: Call = { caller, lang: 'en', stage: 'menu', history: [], misses: 0, missing: [], skipped: new Set(), updated: Date.now() };
     calls.set(sid, call);
     send(res, (await menu(req, call)) + `<Redirect method="POST">${xml(`${publicBase(req)}/api/voice/turn`)}</Redirect>`);
+  });
+
+  /** Makes the career roadmap the caller asked for and reads out its goal and steps. */
+  router.post('/roadmap', async (req, res) => {
+    if (!fromTwilio(req)) return res.status(403).send('Forbidden');
+    const call = calls.get(String(req.body.CallSid || ''));
+    if (!call) return send(res, `<Redirect method="POST">${xml(`${publicBase(req)}/api/voice/incoming`)}</Redirect>`);
+    const request = call.pendingRoadmap;
+    call.pendingRoadmap = undefined;
+    call.stage = 'chat';
+    const r = request ? await local('/api/ai/livelihood-map', { request, profile: {}, language: LANGUAGE_NAMES[call.lang] }).catch(() => null) : null;
+    const map = r?.status === 200 ? r.data : null;
+    if (!map) return send(res, gather(req, call, await say(req, call, [P.busy, P.anythingElse])));
+    // The roadmap is written in the caller's language already; only the fixed phrases are translated
+    const steps = (Array.isArray(map.milestones) ? map.milestones : []).slice(0, 4).map((m: any) => `${m.period}: ${m.title}. ${m.action}`);
+    const spoken = [map.audioNarrationScript || map.profileSummary, ...steps].filter(Boolean).join(' ');
+    send(res, gather(req, call, speak(req, spoken, call.lang) + (await say(req, call, [P.roadmapApp, P.anythingElse]))));
   });
 
   router.post('/turn', async (req, res) => {

@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
-  FileText,
   Globe2,
   Home,
   IndianRupee,
@@ -131,7 +130,6 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
 
   const modes: Array<{ id: ChannelMode; label: string; desc: string; icon: React.ElementType }> = [
     { id: 'voice_studio', label: 'AI Voice Studio', desc: 'Full voice conversation', icon: Mic },
-    { id: 'unified_journey', label: 'KaushalFill', desc: 'Guided profile & roadmap journey', icon: FileText },
     { id: 'ivr', label: 'IVR Helpline', desc: 'Phone-style voice menu', icon: PhoneCall },
     { id: 'whatsapp', label: 'WhatsApp Assistant', desc: 'Chat-style guidance', icon: MessageSquare },
     { id: 'kiosk', label: 'Kiosk Mode', desc: 'Large, simple public screen', icon: Store },

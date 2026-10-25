@@ -5,6 +5,8 @@ import {
   Circle,
   Download,
   ExternalLink,
+  Flag,
+  History,
   FileText,
   GraduationCap,
   Info,
@@ -15,7 +17,8 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
-import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis } from '../types';
+import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis, SavedRoadmap } from '../types';
+import { RoadmapAsk } from './RoadmapAsk';
 import { rankSchemesForProfile } from '../data/schemeCatalog';
 import { SUPPORTED_LANGUAGES } from '../data/languages';
 import { aiService } from '../services/aiService';
@@ -28,6 +31,13 @@ interface KaushalPatraModalProps {
   roadmap: LivelihoodAnalysis | null;
   currentLanguage?: LanguageCode;
   savedSchemeIds?: string[];
+  /** All roadmaps kept for the person (newest first), to switch between them. */
+  history?: SavedRoadmap[];
+  activeId?: string;
+  onPick?: (id: string) => void;
+  /** Ask for another roadmap (typed, spoken or tapped); '' makes one from the profile. */
+  onAsk?: (request: string) => void;
+  busy?: boolean;
 }
 
 /** One milestone on the vertical journey. */
@@ -61,7 +71,7 @@ const Milestone: React.FC<{
   );
 };
 
-export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, onClose, profile, roadmap, currentLanguage = 'en', savedSchemeIds = [] }) => {
+export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, onClose, profile, roadmap, currentLanguage = 'en', savedSchemeIds = [], history = [], activeId, onPick, onAsk, busy }) => {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -81,7 +91,12 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
   if (!isOpen || !roadmap) return null;
 
   const lang = SUPPORTED_LANGUAGES.find((l) => l.code === currentLanguage) || SUPPORTED_LANGUAGES[0];
-  const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const madeAt = history.find((h) => h.id === activeId)?.createdAt;
+  const dateStr = new Date(madeAt || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const milestones = (roadmap.milestones || []).filter((m) => m?.title);
+  // Steps are numbered in order; the plan step only appears when the roadmap has one
+  let n = 0;
+  const step = () => ++n;
 
   const schemes = rankSchemesForProfile(profile, savedSchemeIds);
 
@@ -104,7 +119,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
   const nextActions = [
     !profile.annualFamilyIncome && 'Add your annual family income to your profile for better scheme matching',
     savedSchemeIds.length === 0 && 'Save one or two schemes that interest you',
-    'Collect the documents listed in step 5',
+    'Collect the documents listed below',
     roadmap.nsqfCourses?.[0] && `Ask a nearby training centre about “${roadmap.nsqfCourses[0].jobRole}”`,
   ].filter(Boolean) as string[];
 
@@ -118,10 +133,11 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
           <header className="surface-dark px-6 py-8 sm:px-10 print:bg-navy">
             <div className="relative flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal">Kaushal Patra · Livelihood roadmap</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal">Kaushal Patra · Career roadmap</p>
                 <h2 id="kp-title" className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
-                  {profile.name ? `${profile.name}'s livelihood roadmap` : 'Your livelihood roadmap'}
+                  {roadmap.goal || (profile.name ? `${profile.name}'s livelihood roadmap` : 'Your livelihood roadmap')}
                 </h2>
+                {roadmap.request && <p className="mt-2 text-sm text-slate-200">You asked: “{roadmap.request}”</p>}
                 <p className="mt-2 text-sm text-slate-300">
                   {[profile.district && `${profile.district}, ${profile.state}`, profile.education, profile.traditionalTrade || profile.currentOccupation].filter(Boolean).join(' · ')}
                 </p>
@@ -165,7 +181,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
             </p>
 
             <ol>
-              <Milestone step={1} icon={UserRound} title="Where you are today" tone="saffron" source="ai">
+              <Milestone step={step()} icon={UserRound} title="Where you are today" tone="saffron" source="ai">
                 <p className="text-sm leading-relaxed text-navy">{roadmap.profileSummary}</p>
                 {roadmap.skillGapAnalysis?.strengthsIdentified?.length > 0 && (
                   <div className="mt-4">
@@ -179,7 +195,24 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 )}
               </Milestone>
 
-              <Milestone step={2} icon={GraduationCap} title="Build your skills" source="ai">
+              {milestones.length > 0 && (
+                <Milestone step={step()} icon={Flag} title="Your step-by-step plan" tone="green" source="ai">
+                  <ol className="space-y-3">
+                    {milestones.map((m, i) => (
+                      <li key={`${m.period}-${i}`} className="card flex gap-4 p-4">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-50 text-sm font-bold text-green">{i + 1}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-wider text-saffron-600">{m.period}</p>
+                          <p className="font-bold text-navy">{m.title}</p>
+                          <p className="mt-1 text-sm leading-relaxed text-muted">{m.action}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </Milestone>
+              )}
+
+              <Milestone step={step()} icon={GraduationCap} title="Build your skills" source="ai">
                 {roadmap.skillGapAnalysis?.missingGaps?.length > 0 && (
                   <p className="mb-3 text-sm text-muted">
                     Skills to add: <span className="text-navy">{roadmap.skillGapAnalysis.missingGaps.join(', ')}</span>
@@ -199,7 +232,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 </a>
               </Milestone>
 
-              <Milestone step={3} icon={Landmark} title="Schemes worth exploring" source="catalog">
+              <Milestone step={step()} icon={Landmark} title="Schemes worth exploring" source="catalog">
                 <ul className="space-y-2.5">
                   {schemes.map(({ s, e }) => (
                     <li key={s.id} className="card flex flex-wrap items-center justify-between gap-2 p-4">
@@ -215,7 +248,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 </ul>
               </Milestone>
 
-              <Milestone step={4} icon={Briefcase} title="Paths to earning" tone="green" source="ai">
+              <Milestone step={step()} icon={Briefcase} title="Paths to earning" tone="green" source="ai">
                 <div className="grid gap-3 sm:grid-cols-2">
                   {wage && (
                     <div className="card p-4">
@@ -237,7 +270,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 {roadmap.localClusterLinkage && <p className="mt-3 text-sm text-muted">Local opportunity: <span className="text-navy">{roadmap.localClusterLinkage}</span></p>}
               </Milestone>
 
-              <Milestone step={5} icon={FileText} title="Documents to prepare" source="catalog">
+              <Milestone step={step()} icon={FileText} title="Documents to prepare" source="catalog">
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {documents.map((d) => (
                     <li key={d} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-sm text-navy ring-1 ring-line">
@@ -247,7 +280,7 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 </ul>
               </Milestone>
 
-              <Milestone step={6} icon={Sparkles} title="Your next actions" tone="saffron" last>
+              <Milestone step={step()} icon={Sparkles} title="Your next actions" tone="saffron" last>
                 <ol className="space-y-2">
                   {nextActions.map((a, i) => (
                     <li key={a} className="flex gap-3 text-sm text-navy">
@@ -259,6 +292,39 @@ export const KaushalPatraModal: React.FC<KaushalPatraModalProps> = ({ isOpen, on
                 <p className="mt-4 text-sm text-muted">Need help? Call the toll-free helpline 1800-11-2529.</p>
               </Milestone>
             </ol>
+
+            {(onAsk || history.length > 1) && (
+              <section className="mt-2 space-y-6 border-t border-line pt-8 print:hidden">
+                {onAsk && (
+                  <div>
+                    <h3 className="text-lg font-bold text-navy">Make another roadmap</h3>
+                    <p className="mb-3 text-sm text-muted">For a different goal — say it, type it or pick one.</p>
+                    <RoadmapAsk compact speechLocale={lang.speechLocale} busy={busy} onAsk={onAsk} />
+                  </div>
+                )}
+                {history.length > 1 && onPick && (
+                  <div>
+                    <h3 className="flex items-center gap-2 text-lg font-bold text-navy">
+                      <History className="h-5 w-5 text-teal-600" aria-hidden /> Your roadmaps
+                    </h3>
+                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {history.map((h) => (
+                        <li key={h.id}>
+                          <button
+                            onClick={() => onPick(h.id)}
+                            aria-current={h.id === activeId ? 'true' : undefined}
+                            className={`w-full rounded-xl border px-4 py-3 text-left transition ${h.id === activeId ? 'border-teal bg-teal-50' : 'border-line bg-white hover:border-teal/50'}`}
+                          >
+                            <span className="block font-semibold text-navy">{h.roadmap.goal || 'Roadmap from your profile'}</span>
+                            <span className="text-xs text-muted">{new Date(h.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </article>
       </div>

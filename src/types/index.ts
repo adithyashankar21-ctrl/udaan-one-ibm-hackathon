@@ -8,7 +8,6 @@ export type ChannelMode =
   | 'smart_apply'
   | 'documents'
   | 'loans'
-  | 'unified_journey'
   | 'voice_studio'
   | 'kiosk'
   | 'whatsapp'
@@ -109,6 +108,21 @@ export interface LivelihoodAnalysis {
   };
   localClusterLinkage: string;
   audioNarrationScript: string;
+  /** The career goal as a short title ("Become a certified electrician"). */
+  goal?: string;
+  /** Step-by-step plan, in order. */
+  milestones?: Array<{ period: string; title: string; action: string }>;
+  /** What the person asked for, in their own words (empty when made from the profile alone). */
+  request?: string;
+  /** Made without AI (the service was unavailable). */
+  fallback?: boolean;
+}
+
+/** A roadmap kept for the person, newest first. */
+export interface SavedRoadmap {
+  id: string;
+  createdAt: number;
+  roadmap: LivelihoodAnalysis;
 }
 
 export interface ChatMessage {

@@ -279,6 +279,79 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
   .immersive { padding: 1.5rem; }
 }
 
+/* ───────────────────────────────────────────────────────────
+   Access modes (kiosk, WhatsApp, IVR, district map) in the light
+   UDAAN ONE design. These modules were written as dark screens; here
+   their colour scales are turned around — dark panels become white
+   cards on ivory, light text becomes navy, tinted panels become soft
+   saffron / green washes — so the same markup reads as the rest of the
+   app. Solid buttons keep their colour and white text.
+   ─────────────────────────────────────────────────────────── */
+.mode-light {
+  --color-slate-950: #f7f5ef;
+  --color-slate-900: #ffffff;
+  --color-slate-800: #f4f6fa;
+  --color-slate-700: #e3e8f1;
+  --color-slate-600: #c9d1e1;
+  --color-slate-500: #6b7896;
+  --color-slate-400: #55627f;
+  --color-slate-300: #3d4b6b;
+  --color-slate-200: #24324f;
+  --color-slate-100: #172440;
+  --color-slate-50: #101c36;
+
+  --color-amber-950: #fff8eb;
+  --color-amber-900: #fef0d6;
+  --color-amber-800: #fde0ad;
+  --color-amber-700: #f3c77a;
+  --color-amber-600: #e59a1c;
+  --color-amber-500: #f5a623;
+  --color-amber-400: #c27d0e;
+  --color-amber-300: #a66a0b;
+  --color-amber-200: #8a5b0c;
+  --color-amber-100: #5c3d08;
+  --color-amber-50: #3a2604;
+
+  --color-emerald-950: #ecf8f3;
+  --color-emerald-900: #d6f0e6;
+  --color-emerald-800: #a5ddc9;
+  --color-emerald-700: #125a45;
+  --color-emerald-600: #176b52;
+  --color-emerald-500: #1f8a6a;
+  --color-emerald-400: #176b52;
+  --color-emerald-300: #125a45;
+  --color-emerald-200: #0f4c3a;
+  --color-emerald-100: #0b3a2c;
+  --color-emerald-50: #06241b;
+
+  /* Off-palette accents in older modules follow green (indigo, blue, sky) or saffron (purple, orange) */
+  --color-indigo-950: var(--color-emerald-950); --color-indigo-900: var(--color-emerald-900); --color-indigo-800: var(--color-emerald-800); --color-indigo-700: var(--color-emerald-700); --color-indigo-600: var(--color-emerald-600); --color-indigo-500: var(--color-emerald-500); --color-indigo-400: var(--color-emerald-400); --color-indigo-300: var(--color-emerald-300); --color-indigo-200: var(--color-emerald-200); --color-indigo-100: var(--color-emerald-100); --color-indigo-50: var(--color-emerald-50);
+  --color-blue-950: var(--color-emerald-950); --color-blue-900: var(--color-emerald-900); --color-blue-800: var(--color-emerald-800); --color-blue-700: var(--color-emerald-700); --color-blue-600: var(--color-emerald-600); --color-blue-500: var(--color-emerald-500); --color-blue-400: var(--color-emerald-400); --color-blue-300: var(--color-emerald-300); --color-blue-200: var(--color-emerald-200); --color-blue-100: var(--color-emerald-100); --color-blue-50: var(--color-emerald-50);
+  --color-sky-950: var(--color-emerald-950); --color-sky-900: var(--color-emerald-900); --color-sky-800: var(--color-emerald-800); --color-sky-700: var(--color-emerald-700); --color-sky-600: var(--color-emerald-600); --color-sky-500: var(--color-emerald-500); --color-sky-400: var(--color-emerald-400); --color-sky-300: var(--color-emerald-300); --color-sky-200: var(--color-emerald-200); --color-sky-100: var(--color-emerald-100); --color-sky-50: var(--color-emerald-50);
+  --color-purple-950: var(--color-amber-950); --color-purple-900: var(--color-amber-900); --color-purple-800: var(--color-amber-800); --color-purple-700: var(--color-amber-700); --color-purple-600: var(--color-amber-600); --color-purple-500: var(--color-amber-500); --color-purple-400: var(--color-amber-400); --color-purple-300: var(--color-amber-300); --color-purple-200: var(--color-amber-200); --color-purple-100: var(--color-amber-100); --color-purple-50: var(--color-amber-50);
+  --color-orange-950: var(--color-amber-950); --color-orange-900: var(--color-amber-900); --color-orange-800: var(--color-amber-800); --color-orange-700: var(--color-amber-700); --color-orange-600: var(--color-amber-600); --color-orange-500: var(--color-amber-500); --color-orange-400: var(--color-amber-400); --color-orange-300: var(--color-amber-300); --color-orange-200: var(--color-amber-200); --color-orange-100: var(--color-amber-100); --color-orange-50: var(--color-amber-50);
+  color: var(--color-navy);
+}
+/* White text was written for dark panels: on the light design it is navy, except on solid buttons and bars */
+.mode-light .text-white { color: var(--color-navy); }
+.mode-light .text-white:is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-indigo-5"], [class*="bg-indigo-6"], [class*="bg-blue-5"], [class*="bg-blue-6"], [class*="bg-sky-5"], [class*="bg-sky-6"], [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-green"], [class*="bg-teal"], [class*="bg-navy"], [class*="bg-[#008069]"], [class*="from-emerald"], [class*="from-indigo"], [class*="from-blue"]),
+.mode-light :is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-rose-5"], [class*="bg-rose-6"], [class*="bg-[#008069]"]) .text-white { color: #fff; }
+/* The darkest text shades were used on bright saffron / green surfaces: they stay dark */
+.mode-light :is(.text-slate-950, .text-slate-900, .text-slate-800) { color: var(--color-navy); }
+/* Glass panels (white at low opacity) were light-on-dark; on ivory they read as soft navy tints */
+.mode-light [class*="bg-white/5"], .mode-light [class*="bg-white/10"], .mode-light [class*="bg-white/["] { background-color: #ffffff; }
+.mode-light [class*="border-white/"] { border-color: var(--color-line, #e3e8f1); }
+.mode-light :is(.shadow-lg, .shadow-xl, .shadow-2xl) { box-shadow: 0 10px 30px -18px rgb(16 28 54 / 0.35); }
+
+/* The header of each access mode */
+.mode-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid var(--color-line, #e3e8f1);
+  background: linear-gradient(135deg, #ffffff 0%, #fff8eb 55%, #ecf8f3 100%);
+}
+
 /* Print / Save as PDF: only the open document (e.g. Kaushal Patra) is printed */
 @media print {
   body:has(.print-area) * { visibility: hidden; }

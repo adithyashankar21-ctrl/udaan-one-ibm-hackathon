@@ -1050,21 +1050,8 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
     const extractedUpdates = analyzeAndExtractProfileData(text) || {};
     const effectiveProfile: BeneficiaryProfile = { ...userProfile, ...extractedUpdates };
 
-    // Check if user is asking to create/view roadmap
-    const lowerText = text.toLowerCase();
-    const isRoadmapRequest =
-      lowerText.includes('roadmap') ||
-      lowerText.includes('रोडमैप') ||
-      lowerText.includes('ரோட்மேப்') ||
-      lowerText.includes('రోడ్‌మ్యాప్') ||
-      lowerText.includes('ಕೌಶಲ್ಯ ಪತ್ರ') ||
-      lowerText.includes('patra') ||
-      lowerText.includes('dossier') ||
-      lowerText.includes('generate');
-
-    if (isRoadmapRequest) {
-      onGenerateRoadmap();
-    }
+    // Roadmap requests ("make my roadmap", "how do I become…") are spotted by the assistant, which
+    // makes the roadmap for exactly what was asked (see ROADMAP_INTENT_EVENT)
 
     setIsProcessing(true);
 
@@ -1703,8 +1690,9 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                onGenerateRoadmap();
-                onOpenKaushalPatra();
+                // Opening an existing roadmap must not make a new one
+                if (roadmap) onOpenKaushalPatra();
+                else onGenerateRoadmap();
               }}
               className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl transition"
             >

@@ -12,6 +12,7 @@ import { createVoiceRouter } from './server/voice/router';
 import { createLoansRouter } from './server/loans/router';
 import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
+import { detectRoadmapIntent } from './server/learn/roadmapIntent';
 import { detectIntentLocal } from './server/autofill/schemes';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
 import { LOAN_LISTINGS } from './src/data/loanCatalog';
@@ -172,8 +173,17 @@ app.post('/api/ai/chat', async (req, res) => {
       } Do not ask the application questions yourself. Never say an application has been submitted.`
     : '';
 
+  // Career roadmap requests ("how can I become an electrician?") get a step-by-step roadmap on screen
+  const roadmap = applyIntent ? null : detectRoadmapIntent(String(lastUserText));
+  const roadmapIntent = roadmap?.wantsRoadmap ? { request: roadmap.request } : null;
+  const roadmapNote = roadmapIntent
+    ? `\n7. ROADMAP MODE — the person wants a career roadmap. In 2 or 3 short sentences, name the goal as you understand it and the very first practical step (for example where to train or register). ${
+        /helpline|ivr|phone/i.test(String(channel)) ? 'Say you will now read out their step-by-step roadmap.' : 'Say a full step-by-step roadmap with courses, jobs and support is being prepared on the screen.'
+      } Do not list every step yourself.`
+    : '';
+
   // Learning requests ("teach me Python", "I want to learn tailoring") are taught here and handed to the Learning Hub
-  const learn = applyIntent ? null : detectLearnIntent(String(lastUserText));
+  const learn = applyIntent || roadmapIntent ? null : detectLearnIntent(String(lastUserText));
   const learnIntent = learn?.wantsToLearn ? { courseId: learn.courseId, topic: learn.topic } : null;
   const teachNote = learnIntent
     ? `\n7. TEACHING MODE — the person wants to learn${learnIntent.courseId ? ` (${LEARN_COURSE_NAMES[learnIntent.courseId] || learnIntent.courseId})` : learnIntent.topic ? ` about "${learnIntent.topic}"` : ''}. Act as a patient teacher, not a scheme counsellor:
@@ -213,7 +223,7 @@ ${LOAN_FACTS}
 3. PERSONALISE: if the person shares their name, trade or district, use it and give 1–2 concrete next steps for their situation.
 4. LANGUAGE: reply entirely in ${language}, in its native script, in simple everyday words — even when the question is typed in English. Only if the person clearly speaks a different language than ${language}, reply in theirs. Never mix in words or letters from another Indian language or another script (scheme names like PM Vishwakarma and acronyms like PAN may stay in English).
 5. VOICE STYLE: 2 to 4 short, warm sentences. No bullet lists, no markdown, no emojis — this will be spoken aloud. End with one helpful next step (for example, offering to prepare their Kaushal Patra roadmap).
-6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${teachNote}
+6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${roadmapNote}${teachNote}
 `;
 
   // Sanitize and format multi-turn contents for Gemini
@@ -278,7 +288,7 @@ ${LOAN_FACTS}
       { retryBusy: false, timeoutMs: 9000 }
     );
     const replyText = response.text?.trim();
-    if (replyText) return res.json({ reply: replyText, applyIntent, learnIntent });
+    if (replyText) return res.json({ reply: replyText, applyIntent, learnIntent, roadmapIntent });
   } catch (err: any) {
     lastError = err;
   }
@@ -287,15 +297,21 @@ ${LOAN_FACTS}
   console.error('All Gemini chat models failed, sending offline notice:', lastError?.message);
   const lastUserMsg = rawMessages && rawMessages.length > 0 ? rawMessages[rawMessages.length - 1].content : '';
   const reply = offlineReply(language, lastUserMsg);
-  res.json({ reply, fallback: true, applyIntent, learnIntent });
+  res.json({ reply, fallback: true, applyIntent, learnIntent, roadmapIntent });
 });
 
 // Comprehensive Livelihood & NSQF Gap Mapping endpoint
 app.post('/api/ai/livelihood-map', async (req, res) => {
   try {
-    const { profile, language = 'English' } = req.body;
+    const { profile = {}, language = 'English' } = req.body;
+    // A roadmap can be asked for in the person's own words ("I want to become an electrician")
+    const request = String(req.body?.request || '').slice(0, 400).trim();
 
-    const prompt = `Analyze this Scheduled Caste beneficiary profile under PM-AJAY (GIA component) and provide a comprehensive, NSQF-aligned livelihood roadmap and skilling recommendations.
+    const prompt = `${
+      request
+        ? `A person in India asked for a career roadmap: "${request}". Build the roadmap for exactly this goal (any job, trade, profession, exam or business), using the profile below only as background. If the goal is unclear, choose the most likely meaning for someone with this profile.`
+        : 'Analyze this Scheduled Caste beneficiary profile under PM-AJAY (GIA component) and provide a comprehensive, NSQF-aligned livelihood roadmap and skilling recommendations.'
+    }
 
 Beneficiary Profile:
 - Name: ${profile.name || 'Beneficiary'}
@@ -327,8 +343,14 @@ Return a structured JSON with:
    - "selfEmployment": { "businessConcept": a practical micro-enterprise idea, "projectCost": a rough estimate worded as an estimate, "pmAjayGiaSubsidy": "As per PM-AJAY guidelines — confirm with the District Social Welfare Office", "bankLoanMudra": which loan schemes could cover the rest (e.g. MUDRA Shishu/Kishore, NSFDC) without promising amounts, "equipmentToolkit": equipment needed, "monthlyProfitPotential": cautious estimate worded as depending on sales and costs }
 5. "localClusterLinkage": description of local district economy and why this trade has thriving local demand.
 6. "audioNarrationScript": a warm 3-sentence voice summary in ${language} that can be read out to the beneficiary.
+7. "goal": the career goal as a short title in ${language} (e.g. "Become a certified electrician").
+8. "milestones": 4 to 6 steps in order, each { "period": when, in ${language} (e.g. "Month 1", "Months 2–4"), "title": a short step name in ${language}, "action": what exactly to do and where, in ${language} (e.g. enrol at an ITI or Skill India centre, register on the National Career Service portal, apply for a named scheme or loan) }.
 
-IMPORTANT: Never invent facts. Do not promise approvals, grants or stipend amounts. Do not invent circular numbers or company names. Mark all money figures as estimates. Write profileSummary and audioNarrationScript entirely in ${language}.`;
+IMPORTANT: Never invent facts. Do not promise approvals, grants or stipend amounts. Do not invent circular numbers or company names. Mark all money figures as estimates. Write profileSummary and audioNarrationScript entirely in ${language}.${
+      request
+        ? `\n\nTHE GOAL IS FIXED: "${request}". Every part of the roadmap (goal, milestones, courses, jobs, business idea) must be about this goal, even if the profile points to a different field. Never replace it with a goal that suits the profile better; use the profile only to choose the starting point (what they already have).`
+        : ''
+    }`;
 
     const response = await generateWithFallback({
       contents: prompt,
@@ -393,14 +415,23 @@ IMPORTANT: Never invent facts. Do not promise approvals, grants or stipend amoun
             },
             localClusterLinkage: { type: Type.STRING },
             audioNarrationScript: { type: Type.STRING },
+            goal: { type: Type.STRING },
+            milestones: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: { period: { type: Type.STRING }, title: { type: Type.STRING }, action: { type: Type.STRING } },
+                required: ['period', 'title', 'action'],
+              },
+            },
           },
-          required: ['profileSummary', 'nsqfCourses', 'skillGapAnalysis', 'livelihoodPathways', 'localClusterLinkage', 'audioNarrationScript'],
+          required: ['profileSummary', 'nsqfCourses', 'skillGapAnalysis', 'livelihoodPathways', 'localClusterLinkage', 'audioNarrationScript', 'goal', 'milestones'],
         },
       },
     });
 
     const parsed = JSON.parse(response.text || '{}');
-    res.json(parsed);
+    res.json({ ...parsed, request: request || undefined });
   } catch (error: any) {
     console.error('Error in /api/ai/livelihood-map, returning contextual blueprint:', error?.message);
     const { profile = {} } = req.body;
@@ -469,6 +500,15 @@ IMPORTANT: Never invent facts. Do not promise approvals, grants or stipend amoun
       },
       localClusterLinkage: `Check the District Opportunity Map and your District Industries Centre for current demand for ${trade} in ${district}.`,
       audioNarrationScript: `Hello ${name}. Here is a starting roadmap: build on your ${trade} skills with certified training, then look at loans and grants that may fit. Confirm every scheme detail with your district office before applying.`,
+      goal: String(req.body?.request || '').slice(0, 80).trim() || `Grow in ${trade}`,
+      milestones: [
+        { period: 'Week 1', title: 'Get advice nearby', action: 'Visit your nearest Skill India centre, ITI or CSC and ask which certified course fits this goal.' },
+        { period: 'Months 1–3', title: 'Train and get certified', action: 'Join a free NSQF course (PMKVY), or get your existing skills certified through Recognition of Prior Learning.' },
+        { period: 'Month 4', title: 'Look for work', action: 'Register on the National Career Service portal (ncs.gov.in) and the placement cell of your training centre.' },
+        { period: 'Month 5 onwards', title: 'Grow or start your own work', action: 'If you want your own business, prepare a simple project report and ask your bank about MUDRA or NSFDC loans.' },
+      ],
+      request: String(req.body?.request || '').slice(0, 400).trim() || undefined,
+      fallback: true,
     };
 
     res.json(fallbackData);

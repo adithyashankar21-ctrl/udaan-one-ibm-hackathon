@@ -2,7 +2,7 @@
  * Client for the Smart Apply & Autofill API. All personal data lives on the server
  * (encrypted, short-lived); the browser only holds an HttpOnly session cookie.
  */
-import type { BeneficiaryProfile } from '../types';
+import type { BeneficiaryProfile, SavedRoadmap } from '../types';
 import { authHeader } from './supabase';
 import type { ProfileKey } from '../data/autofillSchema';
 import type { LoanDetails } from '../data/loanCatalog';
@@ -251,6 +251,10 @@ export const autofillApi = {
   /** Learning Hub progress and built courses kept with the account. */
   learning: () => call<{ progress: string[]; courses: unknown[] }>('/learning'),
   saveLearning: (change: { progress?: string[]; courses?: unknown[] }) => call<{ progress: string[]; courses: unknown[] }>('/learning', { method: 'POST', json: change }),
+  /** Career roadmaps kept with the account, newest first. */
+  roadmaps: () => call<{ roadmaps: SavedRoadmap[] }>('/roadmaps').then((r) => r.roadmaps),
+  saveRoadmap: (saved: SavedRoadmap) => call<{ roadmaps: SavedRoadmap[] }>('/roadmaps', { method: 'POST', json: saved }).then((r) => r.roadmaps),
+  deleteRoadmap: (id: string) => call<{ roadmaps: SavedRoadmap[] }>(`/roadmaps/${id}`, { method: 'DELETE', json: {} }).then((r) => r.roadmaps),
   /** Schemes saved for later, kept with the account. */
   savedSchemes: () => call<{ ids: string[] }>('/saved-schemes').then((r) => r.ids),
   saveSavedSchemes: (ids: string[]) => call<{ ids: string[] }>('/saved-schemes', { method: 'POST', json: { ids } }).then((r) => r.ids),

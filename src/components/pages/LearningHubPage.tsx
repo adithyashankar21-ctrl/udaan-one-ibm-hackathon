@@ -27,7 +27,7 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import type { ChannelMode, Language } from '../../types';
+import type { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { LEARNING_TRACKS, type LearningCourse, type LearningModule, subtopicCount, subtopicKey } from '../../data/learningTracks';
 import { buildCourse, fetchLesson, type Lesson, type LearningEntry } from '../../services/learnApi';
 import { DoubtSolver, LessonView, lessonScript } from '../learning/TutorBlocks';
@@ -752,14 +752,86 @@ const LearnAnything: React.FC<{ speechLocale: string; building: string | null; e
   );
 };
 
+/* ── suggestions from the profile ─────────────────────────────────────── */
+
+interface Suggestion {
+  /** A built-in course to open, or a topic for Guru to build a course on. */
+  courseId?: string;
+  topic?: string;
+  title: string;
+  why: string;
+}
+
+const COMPUTING = /comput|software|\bit\b|i\.t\.|engineer|b\.?tech|b\.?e\b|bca|mca|b\.?sc|diploma|polytechnic|coding|program|developer|data|student|college/i;
+const SCHOOLED = /10th|12th|sslc|hsc|matric|secondary|graduat|degree|diploma|iti|b\.|m\.|engineer|bca|mca|phd/i;
+
+/** Up to three next steps that fit what the profile says about the person. */
+export function suggestionsFor(p?: BeneficiaryProfile): Suggestion[] {
+  if (!p) return [];
+  const education = (p.education || '').trim();
+  const work = (p.traditionalTrade || p.currentOccupation || '').trim();
+  const skills = (p.existingSkills || '').trim();
+  if (!education && !work && !skills) return [];
+  const all = `${education} ${work} ${skills}`;
+  const out: Suggestion[] = [];
+  if (COMPUTING.test(all)) {
+    out.push({ courseId: 'python', title: 'Python programming', why: education ? `Builds on your studies (${education})` : 'Fits your interest in computers' });
+    out.push({ courseId: 'web', title: 'Web development', why: 'Websites are one of the most asked-for skills in IT jobs' });
+  } else if (!SCHOOLED.test(education)) {
+    out.push({ courseId: 'digital-basics', title: 'Computer and digital basics', why: 'A good first step: phones, computers, UPI and online services' });
+  }
+  if (work && !COMPUTING.test(work)) out.push({ topic: `Growing a small ${work.toLowerCase()} business`, title: `Grow your ${work.toLowerCase()} work`, why: `Made for your work as ${work.toLowerCase()}: costs, pricing, customers and going online` });
+  out.push({ courseId: 'career', title: 'Job readiness and interviews', why: 'Spoken English, a CV and interview practice for the jobs you want' });
+  return out.slice(0, 3);
+}
+
+const ForYou: React.FC<{ suggestions: Suggestion[]; firstName?: string; onOpen: (s: Suggestion) => void; building: string | null }> = ({ suggestions, firstName, onOpen, building }) => {
+  if (!suggestions.length) return null;
+  return (
+    <section aria-labelledby="for-you" className="space-y-4">
+      <div>
+        <p className="eyebrow flex items-center gap-2">
+          <Sparkles className="h-4 w-4" aria-hidden /> From your profile
+        </p>
+        <h2 id="for-you" className="mt-1 text-2xl font-extrabold text-navy sm:text-3xl">
+          {firstName ? `Suggested for you, ${firstName}` : 'Suggested for you'}
+        </h2>
+      </div>
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {suggestions.map((s) => (
+          <li key={s.courseId || s.topic}>
+            <button
+              onClick={() => onOpen(s)}
+              disabled={Boolean(building)}
+              className="flex h-full w-full flex-col items-start gap-1 rounded-2xl border border-line bg-white p-4 text-left transition hover:border-teal/50 hover:shadow-sm disabled:opacity-60"
+            >
+              <span className="flex items-center gap-2 font-bold text-navy">
+                {s.topic ? <Wand2 className="h-4 w-4 text-saffron-600" aria-hidden /> : <BookOpen className="h-4 w-4 text-teal-600" aria-hidden />}
+                {s.title}
+              </span>
+              <span className="text-sm leading-relaxed text-muted">{s.why}</span>
+              <span className="mt-auto inline-flex items-center gap-1 pt-2 text-sm font-semibold text-teal-600">
+                {building && s.topic === building ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                {s.topic ? 'Build this course' : 'Start'} <ArrowRight className="h-4 w-4" aria-hidden />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
 /* ── page ─────────────────────────────────────────────────────────────── */
 
-export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mode: ChannelMode) => void; entry?: LearningEntry | null; onEntryHandled?: () => void }> = ({
-  langConfig,
-  onNavigate,
-  entry,
-  onEntryHandled,
-}) => {
+export const LearningHubPage: React.FC<{
+  langConfig: Language;
+  /** The person's profile: suggestions follow their education, work and skills. */
+  profile?: BeneficiaryProfile;
+  onNavigate?: (mode: ChannelMode) => void;
+  entry?: LearningEntry | null;
+  onEntryHandled?: () => void;
+}> = ({ langConfig, profile, onNavigate, entry, onEntryHandled }) => {
   const [progress, setProgress] = useState<Set<string>>(loadProgress);
   const [open, setOpen] = useState<{ courseId: string; doubt: boolean; question?: { text: string; nonce: number; speak?: boolean } | null } | null>(null);
   const [custom, setCustom] = useState<LearningCourse[]>(loadCustom);
@@ -768,6 +840,35 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
   useEffect(() => {
     autofillApi.certificates().then(setCertificates).catch(() => setCertificates([]));
   }, []);
+
+  // Progress and built courses are kept with the account too, so they follow the learner to any
+  // device. This browser keeps its copy, so the hub still works without an account.
+  const account = useRef(false);
+  useEffect(() => {
+    autofillApi
+      .learning()
+      .then((saved) => {
+        account.current = true;
+        setProgress((local) => {
+          const merged = new Set([...saved.progress, ...local]);
+          saveProgress(merged);
+          if (merged.size > saved.progress.length) autofillApi.saveLearning({ progress: [...merged] }).catch(() => {});
+          return merged;
+        });
+        setCustom((local) => {
+          const fromAccount = (saved.courses as LearningCourse[]).filter((c) => c?.id && Array.isArray(c.modules));
+          const merged = [...local, ...fromAccount.filter((c) => !local.some((l) => l.id === c.id))].slice(0, 12);
+          saveCustom(merged);
+          if (local.some((l) => !fromAccount.some((c) => c.id === l.id))) autofillApi.saveLearning({ courses: merged }).catch(() => {});
+          return merged;
+        });
+      })
+      .catch(() => {});
+  }, []);
+  const storeCustom = (list: LearningCourse[]) => {
+    saveCustom(list);
+    if (account.current) autofillApi.saveLearning({ courses: list.slice(0, 12) }).catch(() => {});
+  };
   const [building, setBuilding] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
   const language = langConfig.name || 'English';
@@ -779,6 +880,7 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
       const n = new Set(p);
       n.add(key);
       saveProgress(n);
+      if (account.current) autofillApi.saveLearning({ progress: [key] }).catch(() => {});
       return n;
     });
   }, []);
@@ -801,7 +903,7 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
         const c = await buildCourse({ topic, language, context });
         setCustom((list) => {
           const next = [c, ...list.filter((x) => x.id !== c.id)];
-          saveCustom(next);
+          storeCustom(next);
           return next;
         });
         setOpen({ courseId: c.id, doubt: looksLikeQuestion(question), question: looksLikeQuestion(question) ? { text: question!, nonce: Date.now() } : null });
@@ -818,7 +920,7 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
   const removeCustom = (id: string) =>
     setCustom((list) => {
       const next = list.filter((c) => c.id !== id);
-      saveCustom(next);
+      storeCustom(next);
       return next;
     });
 
@@ -885,6 +987,13 @@ export const LearningHubPage: React.FC<{ langConfig: Language; onNavigate?: (mod
                   </motion.li>
                 ))}
               </motion.ul>
+
+              <ForYou
+                suggestions={suggestionsFor(profile)}
+                firstName={profile?.name?.trim().split(/\s+/)[0]}
+                building={building}
+                onOpen={(s) => (s.courseId ? go(s.courseId) : build(s.topic!, `The learner works as ${profile?.traditionalTrade || profile?.currentOccupation}.`))}
+              />
 
               <LearnAnything speechLocale={langConfig.speechLocale} building={building} error={buildError} onBuild={(t) => build(t)} />
 

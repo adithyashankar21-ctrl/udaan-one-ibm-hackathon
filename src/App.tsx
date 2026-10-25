@@ -143,12 +143,18 @@ export default function App() {
   const channelRef = useRef(currentChannel);
   channelRef.current = currentChannel;
 
+  /** Saved schemes are kept with the account once there is one (this browser keeps a copy too). */
+  const accountSaves = useRef(false);
+  const storeSavedSchemes = (next: string[]) => {
+    try {
+      localStorage.setItem('kv-saved-schemes', JSON.stringify(next));
+    } catch {}
+    if (accountSaves.current) autofillApi.saveSavedSchemes(next).catch(() => {});
+  };
   const toggleSavedScheme = (id: string) => {
     setSavedSchemeIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      try {
-        localStorage.setItem('kv-saved-schemes', JSON.stringify(next));
-      } catch {}
+      storeSavedSchemes(next);
       return next;
     });
   };
@@ -180,6 +186,23 @@ export default function App() {
       .then(handleAutofillSession)
       .catch(() => setAutofillSession({ hasSession: false, consent: null, consentVersion: '', retentionDays: 7 }));
   }, [handleAutofillSession]);
+
+  // With an account, saved schemes follow the person to any device: merge this browser's with the account's once
+  const hasConsent = Boolean(autofillSession?.consent);
+  useEffect(() => {
+    if (!hasConsent || accountSaves.current) return;
+    autofillApi
+      .savedSchemes()
+      .then((ids) => {
+        accountSaves.current = true;
+        setSavedSchemeIds((local) => {
+          const merged = [...new Set([...ids, ...local])];
+          storeSavedSchemes(merged);
+          return merged;
+        });
+      })
+      .catch(() => {});
+  }, [hasConsent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The person's own details are never sent for translation (translations are shared by everyone)
   useEffect(() => {
@@ -459,7 +482,7 @@ export default function App() {
           />
         )}
 
-        {currentChannel === 'learning' && <LearningHubPage langConfig={langConfig} onNavigate={setCurrentChannel} entry={learningEntry} onEntryHandled={() => setLearningEntry(null)} />}
+        {currentChannel === 'learning' && <LearningHubPage langConfig={langConfig} profile={userProfile} onNavigate={setCurrentChannel} entry={learningEntry} onEntryHandled={() => setLearningEntry(null)} />}
 
         {currentChannel === 'enterprise' && (
           <EnterprisePage

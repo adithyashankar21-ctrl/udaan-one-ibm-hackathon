@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, IndianRupee, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
 import type { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { DOCUMENT_CATEGORIES, DOCUMENT_SERVICES, type DocumentCategory, type DocumentService } from '../../data/documentServices';
@@ -7,6 +7,8 @@ import { estimateEligibility } from '../../data/schemeCatalog';
 import { autofillApi, type SessionState, type SchemeInfo } from '../../services/autofillApi';
 import { useDictation } from '../smartapply/media';
 import { Alert, EmptyState, Spinner, StatusPill } from '../ui/kit';
+import { MyCertificates } from '../learning/Certificates';
+import type { Certificate } from '../../services/learnApi';
 
 /** Switch between the parts of Explore: schemes, loans and official documents. */
 export const ExploreTabs: React.FC<{ current: 'schemes' | 'loans' | 'documents'; onNavigate?: (m: ChannelMode) => void }> = ({ current, onNavigate }) =>
@@ -152,6 +154,11 @@ export const DocumentsPage: React.FC<Props> = ({ profile, langConfig, session, o
   const [error, setError] = useState<string | null>(null);
 
   const haveKinds = useMemo(() => new Set((session?.documents || []).map((d) => d.kind)), [session?.documents]);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const hasConsent = Boolean(session?.consent);
+  useEffect(() => {
+    if (hasConsent) autofillApi.certificates().then(setCertificates).catch(() => setCertificates([]));
+  }, [hasConsent]);
   const results = DOCUMENT_SERVICES.filter((s) => (category === 'all' || s.category === category) && (aiResult?.scheme?.kind === 'document' ? true : quickMatch(s, query)));
   const highlighted = aiResult?.scheme?.kind === 'document' ? aiResult.scheme.schemeId : null;
   const ordered = highlighted ? [...results].sort((a, b) => (a.id === highlighted ? -1 : b.id === highlighted ? 1 : 0)) : results;
@@ -187,6 +194,9 @@ export const DocumentsPage: React.FC<Props> = ({ profile, langConfig, session, o
           Describe what you need in your own words. We find the right official form, tell you which documents are accepted, and fill the application from the documents you already have.
         </p>
       </header>
+
+      {/* Certificates earned in the Learning Hub belong with the person's documents too */}
+      <MyCertificates certificates={certificates} />
 
       <div className="card space-y-4 p-4 sm:p-5">
         <form

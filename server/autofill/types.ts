@@ -143,4 +143,8 @@ export interface SessionData {
   drafts: Draft[];
   /** Learning Hub certificates earned by this person. */
   certificates?: import('../learn/certificates').Certificate[];
+  /** Learning Hub progress (subtopic keys done) and the courses Guru built for this person. */
+  learning?: { progress: string[]; courses: unknown[] };
+  /** Schemes this person saved to look at later (scheme ids). */
+  savedSchemes?: string[];
 }

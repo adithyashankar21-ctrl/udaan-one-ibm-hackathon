@@ -248,6 +248,12 @@ export const autofillApi = {
   },
   /** Learning Hub certificates earned by this person. */
   certificates: () => call<{ certificates: import('./learnApi').Certificate[] }>('/certificates').then((r) => r.certificates),
+  /** Learning Hub progress and built courses kept with the account. */
+  learning: () => call<{ progress: string[]; courses: unknown[] }>('/learning'),
+  saveLearning: (change: { progress?: string[]; courses?: unknown[] }) => call<{ progress: string[]; courses: unknown[] }>('/learning', { method: 'POST', json: change }),
+  /** Schemes saved for later, kept with the account. */
+  savedSchemes: () => call<{ ids: string[] }>('/saved-schemes').then((r) => r.ids),
+  saveSavedSchemes: (ids: string[]) => call<{ ids: string[] }>('/saved-schemes', { method: 'POST', json: { ids } }).then((r) => r.ids),
   issueCertificate: (passToken: string) => call<{ certificate: import('./learnApi').Certificate }>('/certificates', { method: 'POST', json: { passToken } }).then((r) => r.certificate),
   resolveConflict: (conflictId: string, choice: { index?: number; value?: string }) =>
     call<SessionState>('/profile/resolve', { method: 'POST', json: { conflictId, ...choice } }),

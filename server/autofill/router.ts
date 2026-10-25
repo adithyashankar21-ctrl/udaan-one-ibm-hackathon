@@ -846,6 +846,51 @@ export function createAutofillRouter(generate: Generate) {
     })
   );
 
+  /* Learning Hub progress and saved schemes, kept with the account (not only in one browser) */
+
+  const LEARNING_LIMITS = { keys: 5000, keyLength: 200, courses: 12, courseBytes: 200_000 };
+  const learningOf = (session: SessionData) => session.learning || { progress: [], courses: [] };
+
+  router.get(
+    '/learning',
+    withSession((_req, res, session) => res.json(learningOf(session)))
+  );
+
+  /** `progress`: subtopic keys finished (added to what is saved); `courses`: the whole list of built courses. */
+  router.post(
+    '/learning',
+    withSession((req, res, session) => {
+      const learning = learningOf(session);
+      const add = Array.isArray(req.body?.progress)
+        ? req.body.progress.filter((k: unknown): k is string => typeof k === 'string' && k.length > 0 && k.length <= LEARNING_LIMITS.keyLength)
+        : [];
+      learning.progress = [...new Set([...learning.progress, ...add])].slice(-LEARNING_LIMITS.keys);
+      if (Array.isArray(req.body?.courses)) {
+        learning.courses = req.body.courses
+          .filter((c: any) => c && typeof c.id === 'string' && Array.isArray(c.modules) && JSON.stringify(c).length <= LEARNING_LIMITS.courseBytes)
+          .slice(0, LEARNING_LIMITS.courses);
+      }
+      session.learning = learning;
+      saveSession(session);
+      res.json(learning);
+    })
+  );
+
+  router.get(
+    '/saved-schemes',
+    withSession((_req, res, session) => res.json({ ids: session.savedSchemes || [] }))
+  );
+
+  router.post(
+    '/saved-schemes',
+    withSession((req, res, session) => {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === 'string' && /^[\w-]{1,80}$/.test(id)) : [];
+      session.savedSchemes = [...new Set(ids)].slice(0, 200) as string[];
+      saveSession(session);
+      res.json({ ids: session.savedSchemes });
+    })
+  );
+
   /*
    * Real phone calls (the Twilio helpline, server/voice): a caller's details are kept by their
    * phone number, after they agree by voice. Only this server can call these routes.

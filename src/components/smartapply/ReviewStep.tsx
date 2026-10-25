@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Lock, PencilLine, X } from 'lucide-react';
+import { Check, Lock, PencilLine, ShieldAlert, X } from 'lucide-react';
 import type { SmartApplyStrings } from '../../data/smartApplyStrings';
 import type { LanguageCode } from '../../types';
 import { autofillApi, type DraftView, type FieldView } from '../../services/autofillApi';
@@ -144,6 +144,32 @@ export const ReviewStep: React.FC<Props> = ({ t, language, draft, onDraft }) => 
       </section>
 
       {draft.approvalStale && <Alert tone="warning" title={t.approvalStale} />}
+
+      {draft.risks && (
+        <section aria-labelledby="risks-h" className={`card p-5 sm:p-6 ${draft.risks.length ? 'border-coral/30' : 'border-green/30'}`}>
+          <h3 id="risks-h" className="flex items-center gap-2 text-lg font-bold text-navy">
+            <ShieldAlert className={`h-5 w-5 ${draft.risks.length ? 'text-coral-600' : 'text-green'}`} aria-hidden /> Rejection check
+          </h3>
+          {draft.risks.length === 0 ? (
+            <p className="mt-1 text-sm text-green">No common reasons for rejection found. The lender still checks your credit history and documents.</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-muted">Banks often turn loans down for these reasons. Fix them before you submit.</p>
+              <ul className="mt-3 space-y-2">
+                {draft.risks.map((r) => (
+                  <li key={r.title} className={`rounded-xl border p-3 ${r.level === 'high' ? 'border-coral/30 bg-coral-50' : 'border-saffron/40 bg-saffron-50'}`}>
+                    <p className="flex items-start gap-2 text-sm font-semibold text-navy">
+                      <StatusPill tone={r.level === 'high' ? 'danger' : 'warning'}>{r.level === 'high' ? 'Likely rejection' : 'May delay'}</StatusPill>
+                      <span>{r.title}</span>
+                    </p>
+                    <p className="mt-1 text-sm text-muted">{r.fix}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
 
       {draft.sections.map((section) => (
         <section key={section} aria-labelledby={`sec-${section}`}>

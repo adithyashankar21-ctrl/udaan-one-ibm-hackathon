@@ -21,6 +21,8 @@ interface Props {
   /** Scheme requested from another channel (voice, chat, helpline…). */
   initialSchemeId?: string | null;
   initialDraftId?: string | null;
+  /** Answers already given elsewhere (the loan advisor), filled in when the draft starts. */
+  initialValues?: Record<string, string>;
   entryChannel?: string;
   onEntryConsumed?: () => void;
 }
@@ -55,7 +57,7 @@ const ELIG = {
   unlikely: { tone: 'neutral' as const, label: 'May not match' },
 };
 
-export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session, onSession, initialSchemeId, initialDraftId, entryChannel = 'web', onEntryConsumed }) => {
+export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session, onSession, initialSchemeId, initialDraftId, initialValues, entryChannel = 'web', onEntryConsumed }) => {
   const t = getSmartApplyStrings(language);
   const pv = language === 'hi' ? PV.hi : PV.en;
   // Voice for choosing a form and giving consent; the form itself is filled by MissingQuestions and VoiceDocs
@@ -133,6 +135,14 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     } else startDocVoice(false);
   };
 
+  /** Answers handed over with the entry (from the loan advisor), saved once the draft exists. */
+  const prefill = useRef<Record<string, string> | null>(null);
+  const applyPrefill = async (draftId: string) => {
+    const values = prefill.current;
+    prefill.current = null;
+    if (values && Object.keys(values).length) await autofillApi.editFields(draftId, values).catch(() => undefined);
+  };
+
   const firstUsefulStep = (d: DraftView) => (d.documents.some((x) => x.required && !x.have && !x.manual) ? 1 : d.missing.length || d.conflicts.length ? 2 : 3);
 
   const start = async (schemeId: string, channel = entryChannel) => {
@@ -146,6 +156,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
     try {
       const res = await autofillApi.startDraft(schemeId, channel);
       onSession(res);
+      await applyPrefill(res.draft.id);
       const full = await autofillApi.getDraft(res.draft.id);
       applyDraft(full.draft, full.fieldsHash);
       setStep(firstUsefulStep(full.draft));
@@ -176,6 +187,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
       resume(initialDraftId);
       onEntryConsumed?.();
     } else if (initialSchemeId) {
+      prefill.current = initialValues || null;
       start(initialSchemeId, entryChannel);
       onEntryConsumed?.();
     }
@@ -193,6 +205,7 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
         const channel = voiceMode.current ? 'voice' : entryChannel;
         const res = await autofillApi.startDraft(pending, channel);
         onSession(res);
+        await applyPrefill(res.draft.id);
         const full = await autofillApi.getDraft(res.draft.id);
         applyDraft(full.draft, full.fieldsHash);
         setStep(firstUsefulStep(full.draft));

@@ -121,6 +121,56 @@ export function mixesScripts(translation: string, lang: LanguageCode, original =
   return Object.entries(SCRIPT_LETTERS).some(([script, re]) => script !== SCRIPT_OF[lang] && re.test(translation) && !re.test(original));
 }
 
+/** Code, CSS and template fragments that are never shown as words. */
+const CODE_LIKE = /[={}<>[\]]|;\s*(?:$|[}\n])|\w\(|\):|^f"|\bvia-|--/;
+
+/**
+ * True when a translation still has English words in it. Only acronyms in capitals (PAN, IFSC,
+ * PM-AJAY, NBFCs, e-KYC), the brand UDAAN ONE, web addresses, emails and {0} placeholders may
+ * stay in Latin letters; names of banks, portals, places and schemes are written in the
+ * language's own script.
+ */
+/**
+ * Drops English glosses in brackets after a translated word, as in "चेकसम (checksum)" or
+ * "ಎಸ್‌ವಿಎನಿಧಿ (SVANidhi)". A bracket the English text itself has, like "(RBI Sachet)", is
+ * content and stays (its words are then written in the language's script); in "(ಸಚೇತ್ - Sachet)"
+ * only the English half goes.
+ */
+export const dropEnglishGlosses = (translation: string, original = '') =>
+  translation.replace(/([^\x00-\x7F][^\s(]*)\s*\(([^()]*)\)/g, (all, word: string, inner: string) => {
+    if (!/[A-Za-z]/.test(inner)) return all;
+    const native = inner.replace(/\s*[-–,/]?\s*[A-Za-z][A-Za-z0-9'’ .&/-]*$/, '').trim();
+    if (native && !/[A-Za-z]/.test(native)) return `${word} (${native})`;
+    if (native) return all;
+    return original.includes(`(${inner.trim()})`) ? all : word;
+  });
+
+export function leavesEnglish(translation: string, original = ''): boolean {
+  return englishWordsIn(translation, original).length > 0;
+}
+
+/**
+ * Programming terms the Learning Hub teaches: they are typed exactly like this in code, so they
+ * stay in Latin letters in every language.
+ */
+const CODE_TERMS = /(?<![A-Za-z])(?:Python|JavaScript|TypeScript|Java|HTML|CSS|NumPy|pandas|Matplotlib|SQL|MySQL|SQLite|Git|GitHub|VS Code|Jupyter|React|Node\.js|malloc|calloc|realloc|free|scanf|printf|args|kwargs|init|self|print|input|range|len|def|class|return|import|lambda|elif|else|while|for|if|try|except|finally|True|False|None|null|int|float|str|bool|list|dict|tuple|set|void|main|char|struct|pointer|[A-Z][a-z]+Error)(?![A-Za-z])/g;
+
+/** The English words a translation still has (see leavesEnglish), so a retry can name them. */
+export function englishWordsIn(translation: string, original = ''): string[] {
+  // {0}, {1}… are number placeholders, not code
+  if (CODE_LIKE.test(original.replace(/\{\d+\}/g, ''))) return [];
+  const rest = translation
+    // Code words quoted from the original stay as they are
+    .replace(/"[^"]*"|`[^`]*`|\S*[_*]\S*/g, (m) => (original.includes(m.replace(/^"|"$/g, '')) ? ' ' : m))
+    .replace(CODE_TERMS, (m) => (original.includes(m) ? ' ' : m))
+    .replace(/https?:\/\/\S+|\S+@\S+\.\S+|\b[\w-]+(?:\.[\w-]+)*\.(?:gov|nic|org|co|com|in|net|bank|sbi|money)\b\S*/gi, ' ')
+    // Units after a number: 50cc, 5km, 2kg
+    .replace(/(\d|\})(?:cc|km|kg|mm|cm|ml|kW|GB|MB)(?![A-Za-z])/g, '$1')
+    .replace(/\{\d+\}/g, ' ')
+    .replace(/\b(?:[a-z]-)?[A-Z][A-Z0-9]*(?:[-.&/+][A-Z0-9]+)*s?\b/g, ' ');
+  return [...new Set(rest.match(/[A-Za-z][A-Za-z'’-]*[A-Za-z]/g) || [])];
+}
+
 /**
  * Numbers in a text are translated as placeholders, so "3 questions left" and "5 questions left"
  * share one translation: maskNumbers gives the shared key and the numbers, unmaskNumbers puts

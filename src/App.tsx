@@ -138,7 +138,7 @@ export default function App() {
   const [applyIntent, setApplyIntent] = useState<ApplyIntentDetail | null>(null);
   const [learnIntent, setLearnIntent] = useState<LearningEntry | null>(null);
   const [learningEntry, setLearningEntry] = useState<LearningEntry | null>(null);
-  const [smartApplyEntry, setSmartApplyEntry] = useState<{ schemeId?: string | null; draftId?: string | null; channel?: string } | null>(null);
+  const [smartApplyEntry, setSmartApplyEntry] = useState<{ schemeId?: string | null; draftId?: string | null; channel?: string; values?: Record<string, string> } | null>(null);
   const channelRef = useRef(currentChannel);
   channelRef.current = currentChannel;
 
@@ -248,7 +248,7 @@ export default function App() {
     showNotification(`District switched to ${district}, ${state}`);
   };
 
-  const openSmartApply = (entry: { schemeId?: string | null; draftId?: string | null; channel?: string } = {}) => {
+  const openSmartApply = (entry: { schemeId?: string | null; draftId?: string | null; channel?: string; values?: Record<string, string> } = {}) => {
     setSmartApplyEntry(entry);
     setApplyIntent(null);
     setCurrentChannel('smart_apply');
@@ -422,6 +422,8 @@ export default function App() {
             profile={userProfile}
             langConfig={langConfig}
             onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
+            onApplyWith={(schemeId, values, byVoice) => openSmartApply({ schemeId, values, channel: byVoice ? 'voice' : undefined })}
+            onLearn={(topic) => openLearning({ topic })}
             onNavigate={setCurrentChannel}
           />
         )}
@@ -481,6 +483,7 @@ export default function App() {
             onSession={handleAutofillSession}
             initialSchemeId={smartApplyEntry?.schemeId}
             initialDraftId={smartApplyEntry?.draftId}
+            initialValues={smartApplyEntry?.values}
             entryChannel={smartApplyEntry?.channel || 'web'}
             onEntryConsumed={() => setSmartApplyEntry(null)}
           />

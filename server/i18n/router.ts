@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Type } from '@google/genai';
 import type { Generate } from '../autofill/ocr';
-import { maskNumbers, mixesScripts, unmaskNumbers } from '../../src/data/languageTools';
+import { dropEnglishGlosses, englishWordsIn, leavesEnglish, maskNumbers, mixesScripts, unmaskNumbers } from '../../src/data/languageTools';
 import type { LanguageCode } from '../../src/types';
 
 const LANGUAGES: Record<string, string> = {
@@ -78,11 +78,14 @@ function scheduleSave(lang: string) {
 
 const rules = (language: string) => `Translate each English text of a government services app for people in India into ${language}.
 Rules:
-- Simple, everyday, respectful words a person with little schooling understands. Native script only.
-- Keep unchanged: the brand "UDAAN ONE", scheme and act names (PM Vishwakarma, PM-AJAY, PMEGP, MUDRA, PM SVANidhi, NSQF, PMKVY), document names that are proper nouns (Aadhaar, PAN), acronyms (OCR, PDF, PIN, AI, IFSC, OTP), numbers, phone numbers, URLs, emails and placeholders in curly braces like {days}.
+- Simple, everyday, respectful words a person with little schooling understands. Write EVERYTHING in the ${language} script — the reader must never see an English word.
+- Names of schemes, banks, lenders, portals, documents, places and products are written in the ${language} script too, using the official ${language} name when there is one (for example Aadhaar, MUDRA Yojana, PM Vishwakarma, Bank of Baroda, Skill India, Smart Apply, Learning Hub — all in ${language} letters).
+- Only these stay in Latin letters: the brand "UDAAN ONE", acronyms written in capitals (PAN, IFSC, OTP, PDF, PIN, AI, SBI, HDFC, EMI, KCC, PM-AJAY, NBFC), numbers, phone numbers, URLs, emails and placeholders in curly braces like {0} or {days}.
+- Never return a text unchanged in English.
 - Keep the same punctuation, emoji and leading/trailing symbols. Keep line breaks.
 - A text that is only a name, code or number stays as it is.
 - Translate whole words: never mix English letters into a word of the native script.
+- Never add the English word in brackets after a translated one, e.g. not "<word> (masked)" or "<word> (Key Fact Statement)".
 - Use only the ${language} script. Never use letters or words from another Indian language or from Urdu/Hindi, unless the English text itself contains them.
 Return exactly one translation per input, in the same order.`;
 
@@ -90,12 +93,46 @@ Return exactly one translation per input, in the same order.`;
 export type Translate = (lang: string, texts: string[], urgent?: boolean) => Promise<Array<string | null>>;
 
 export function createTranslator(generate: Generate): Translate {
-  const translateBatch = async (lang: string, texts: string[], retry = false): Promise<void> => {
+  /** English words and names → how they are written in `lang` (translated, or spelled as they sound). */
+  const nativeSpellings = async (lang: string, words: string[]): Promise<Record<string, string>> => {
+    if (!words.length) return {};
+    const res = await generate(
+      {
+        contents: [{ role: 'user', parts: [{ text: JSON.stringify(words) }] }],
+        config: {
+          systemInstruction: `Each input is an English word or name from a government services app in India. Write it in the ${LANGUAGES[lang]} script: the usual ${LANGUAGES[lang]} word or official name if there is one, otherwise spelled as it sounds in ${LANGUAGES[lang]} letters. Never return Latin letters. Return exactly one per input, in the same order.`,
+          responseMimeType: 'application/json',
+          responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } },
+          temperature: 0.1,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      },
+      undefined,
+      { retryBusy: true, timeoutMs: 20000 }
+    );
+    const out = JSON.parse(res.text || '[]');
+    const map: Record<string, string> = {};
+    if (Array.isArray(out) && out.length === words.length)
+      words.forEach((w, i) => {
+        if (typeof out[i] === 'string' && out[i].trim() && !/[A-Za-z]/.test(out[i]) && !mixesScripts(out[i], lang as LanguageCode)) map[w] = out[i].trim();
+      });
+    return map;
+  };
+  const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  /** `retry` lists, for a second try, the English words each text's first translation left in. */
+  const translateBatch = async (lang: string, texts: string[], retry: string[][] | false = false): Promise<void> => {
+    const leftover = retry ? [...new Set(retry.flat())].slice(0, 60) : [];
     const res = await generate(
       {
         contents: [{ role: 'user', parts: [{ text: JSON.stringify(texts) }] }],
         config: {
-          systemInstruction: rules(LANGUAGES[lang]),
+          systemInstruction:
+            rules(LANGUAGES[lang]) +
+            (retry
+              ? `\nAn earlier attempt left English words or letters of another script in these texts. Write every word, including names, in the ${LANGUAGES[lang]} script.` +
+                (leftover.length ? ` These English words were left: ${leftover.join(', ')}. Translate each, or write it as it sounds in ${LANGUAGES[lang]} letters.` : '')
+              : ''),
           responseMimeType: 'application/json',
           responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } },
           temperature: 0.1,
@@ -106,19 +143,48 @@ export function createTranslator(generate: Generate): Translate {
       { retryBusy: true, timeoutMs: 25000 }
     );
     const out = JSON.parse(res.text || '[]');
-    if (!Array.isArray(out) || out.length !== texts.length) throw new Error('Translation count mismatch');
+    if (!Array.isArray(out) || out.length !== texts.length) {
+      if (texts.length === 1) throw new Error('Translation count mismatch');
+      // One awkward text can throw the whole batch off: translate the halves separately
+      const half = Math.ceil(texts.length / 2);
+      await translateBatch(lang, texts.slice(0, half), retry && retry.slice(0, half));
+      await translateBatch(lang, texts.slice(half), retry && retry.slice(half));
+      return;
+    }
     const cache = cacheFor(lang);
     const mixed: string[] = [];
+    const mixedWords: string[][] = [];
+    const stillEnglish: Array<[string, string]> = [];
     texts.forEach((t, i) => {
       if (typeof out[i] !== 'string' || !out[i].trim()) return;
-      // Never keep a translation that slips in another language's letters
-      if (mixesScripts(out[i], lang as LanguageCode, t)) mixed.push(t);
-      else cache[t] = out[i];
+      out[i] = dropEnglishGlosses(out[i], t);
+      // Never keep a translation that slips in another language's letters or leaves English words
+      const impure = mixesScripts(out[i], lang as LanguageCode, t) || leavesEnglish(out[i], t);
+      if (!impure) cache[t] = out[i];
+      else if (!retry) {
+        mixed.push(t);
+        mixedWords.push(englishWordsIn(out[i], t));
+      }
+      // Second try: keep it only if it is at least in the right script, never English unchanged
+      else if (!mixesScripts(out[i], lang as LanguageCode, t) && out[i].trim() !== t.trim()) {
+        cache[t] = out[i];
+        stillEnglish.push([t, out[i]]);
+      }
     });
+    // Last step for words the model keeps in English (mostly names): look each one up and swap it in
+    if (stillEnglish.length) {
+      const words = [...new Set(stillEnglish.flatMap(([t, tr]) => englishWordsIn(tr, t)))].sort((a, b) => b.length - a.length);
+      const spelled = await nativeSpellings(lang, words.slice(0, 150)).catch(() => ({}) as Record<string, string>);
+      for (const [t, tr] of stillEnglish) {
+        let fixed = tr;
+        for (const w of words) if (spelled[w]) fixed = fixed.replace(new RegExp(`(?<![A-Za-z])${escape(w)}(?![A-Za-z])`, 'g'), spelled[w]);
+        cache[t] = fixed;
+      }
+    }
     scheduleSave(lang);
     if (mixed.length && !retry) {
-      console.warn(`Translation to ${lang}: ${mixed.length} mixed-script result(s), asking again`);
-      await translateBatch(lang, mixed, true);
+      console.warn(`Translation to ${lang}: ${mixed.length} result(s) with English or another script, asking again`);
+      await translateBatch(lang, mixed, mixedWords);
     }
   };
 

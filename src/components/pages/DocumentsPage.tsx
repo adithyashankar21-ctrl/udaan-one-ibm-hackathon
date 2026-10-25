@@ -162,7 +162,7 @@ export const DocumentsPage: React.FC<Props> = ({ profile, langConfig, session, o
     setError(null);
     setAiResult(null);
     try {
-      const r = await autofillApi.intent(text);
+      const r = await autofillApi.intent(text, langConfig.name);
       setAiResult({ scheme: r.scheme, reason: r.reason, related: r.relatedSchemes || [] });
       setCategory('all');
     } catch (err: any) {

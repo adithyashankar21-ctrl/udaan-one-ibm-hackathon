@@ -8,12 +8,18 @@ import { autofillApi, type SchemeInfo } from '../../services/autofillApi';
 import { useDictation } from '../smartapply/media';
 import { Alert, EmptyState, Spinner, StatusPill } from '../ui/kit';
 import { ExploreTabs } from './DocumentsPage';
+import { LoanAdvisor, type LoanTool } from '../loans/LoanAdvisor';
+import { LoanTools } from '../loans/LoanTools';
+import type { LoanNeed } from '../../data/loanAdvice';
 
 interface Props {
   profile: BeneficiaryProfile;
   langConfig: Language;
   /** Open Smart Apply for this loan; `byVoice` fills it by voice from the start. */
   onApply: (id: string, byVoice?: boolean) => void;
+  /** Start an application with answers the advisor already collected. */
+  onApplyWith: (id: string, values: Record<string, string>, byVoice: boolean) => void;
+  onLearn: (topic: string) => void;
   onNavigate: (m: ChannelMode) => void;
 }
 
@@ -96,15 +102,13 @@ const LoanCard: React.FC<{
         <p className="text-xs font-bold uppercase tracking-wider text-muted">Who can apply</p>
         <p className="mt-1 text-navy">{l.eligibilitySummary}</p>
         {est.level === 'unlikely' && <p className="mt-1 text-xs font-semibold text-coral-600">{est.reasons.join(' · ')}</p>}
-        {tooBig && <p className="mt-1 text-xs font-semibold text-coral-600">{formatRupees(amount)} is above this loan’s limit of {formatRupees(l.amount.max!)}.</p>}
+        {tooBig && <p className="mt-1 text-xs font-semibold text-coral-600">{`${formatRupees(amount)} is above this loan’s limit of ${formatRupees(l.amount.max!)}.`}</p>}
       </div>
 
       {amount > 0 && !tooBig && (
         <p className="mt-3 flex items-center gap-2 rounded-xl border border-teal/30 bg-teal-50 px-3 py-2 text-sm text-navy">
           <BadgePercent className="h-4 w-4 shrink-0 text-teal-600" aria-hidden />
-          <span>
-            Estimated EMI from <strong>{formatRupees(emi(amount, cheapest, term))}</strong> a month for {formatRupees(amount)} over {term} months
-          </span>
+          <span className="font-semibold">{`Estimated EMI from ${formatRupees(emi(amount, cheapest, term))} a month for ${formatRupees(amount)} over ${term} months`}</span>
         </p>
       )}
 
@@ -139,7 +143,8 @@ const LoanCard: React.FC<{
             </table>
           </div>
           <p className="mt-2 text-xs text-muted">
-            {lenderEmi ? `*EMI uses each lender’s lowest published rate, or a typical ${l.estimateRate}% where none is published. ` : ''}Rates checked {l.checked}; your rate depends on your credit score and the lender’s Key Fact Statement.
+            {lenderEmi && <span className="block">{`*EMI uses each lender’s lowest published rate, or a typical ${l.estimateRate}% where none is published.`}</span>}
+            <span className="block">{`Rates checked ${l.checked}; your rate depends on your credit score and the lender’s Key Fact Statement.`}</span>
           </p>
           <ol className="mt-4 space-y-2">
             {l.steps.map((step, i) => (
@@ -170,7 +175,16 @@ const LoanCard: React.FC<{
   );
 };
 
-export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNavigate }) => {
+export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onApplyWith, onLearn, onNavigate }) => {
+  const [tool, setTool] = useState<LoanTool>('budget');
+  const [toolLoan, setToolLoan] = useState<string | undefined>();
+  const [toolNeed, setToolNeed] = useState<LoanNeed | undefined>();
+  const openTool = (t: LoanTool, loanId?: string, need?: LoanNeed) => {
+    setTool(t);
+    if (loanId) setToolLoan(loanId);
+    if (need) setToolNeed(need);
+    requestAnimationFrame(() => document.getElementById('loan-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<LoanCategory | 'all'>('all');
   const [backing, setBacking] = useState<Backing>('all');
@@ -204,7 +218,7 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNav
     setError(null);
     setAiResult(null);
     try {
-      const r = await autofillApi.intent(/loan|लोन|ऋण/i.test(text) ? text : `${text} (loan)`);
+      const r = await autofillApi.intent(/loan|लोन|ऋण/i.test(text) ? text : `${text} (loan)`, langConfig.name);
       setAiResult({ scheme: r.scheme, reason: r.reason, related: r.relatedSchemes || [] });
       setCategory('all');
     } catch (err: any) {
@@ -228,10 +242,15 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNav
         <p className="eyebrow">Loans</p>
         <h1 className="mt-2 text-3xl font-extrabold text-navy sm:text-4xl">Find the right loan, from the right lender</h1>
         <p className="mt-3 text-base leading-relaxed text-muted">
-          Tell us what the money is for. We compare {governmentCount} government loan schemes with bank, NBFC and microfinance loans, estimate your EMI, and fill the application — by typing, from your documents, or by voice.
+          {`Tell us what the money is for. We compare ${governmentCount} government loan schemes with bank, NBFC and microfinance loans, estimate your EMI, and fill the application — by typing, from your documents, or by voice.`}
         </p>
       </header>
 
+      <LoanAdvisor profile={profile} langConfig={langConfig} onApply={onApplyWith} onLearn={onLearn} onTool={openTool} />
+
+      <LoanTools profile={profile} langConfig={langConfig} tool={tool} onTool={setTool} loanId={toolLoan} need={toolNeed} />
+
+      <h2 className="pt-2 text-xl font-extrabold text-navy">Browse all loans</h2>
       <div className="card space-y-4 p-4 sm:p-5">
         <form
           className="flex flex-col gap-2 sm:flex-row"
@@ -336,7 +355,8 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNav
         <div aria-live="polite" className="animate-fade-up">
           {highlighted ? (
             <Alert tone="success" title={`Best match: ${aiResult.scheme!.name}`}>
-              {aiResult.reason || 'Matched from what you described.'} {relatedLoans.length ? 'Shown below with other loans that may also fit.' : 'Shown below.'}
+              <span className="block">{aiResult.reason || 'Matched from what you described.'}</span>
+              <span className="block">{relatedLoans.length ? 'Shown below with other loans that may also fit.' : 'Shown below.'}</span>
               <button
                 onClick={() => {
                   setAiResult(null);
@@ -344,7 +364,7 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNav
                 }}
                 className="mt-2 block text-sm font-semibold text-teal-600 hover:underline"
               >
-                Show all {LOAN_LISTINGS.length} loans
+                {`Show all ${LOAN_LISTINGS.length} loans`}
               </button>
             </Alert>
           ) : aiResult.scheme ? (
@@ -372,7 +392,7 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onNav
       </Alert>
 
       <p className="flex items-center gap-2 text-sm text-muted">
-        <Compass className="h-4 w-4" aria-hidden /> {ordered.length} loan{ordered.length === 1 ? '' : 's'} · rates are indicative (checked October 2026); the lender decides.
+        <Compass className="h-4 w-4" aria-hidden /> <span>{`${ordered.length} ${ordered.length === 1 ? 'loan' : 'loans'} · rates are indicative (checked October 2026); the lender decides.`}</span>
       </p>
 
       {ordered.length === 0 ? (

@@ -206,6 +206,8 @@ export interface DraftView {
   eligibility: { level: 'likely' | 'needs-info' | 'unlikely'; reasons: string[] } | null;
   status: { code: string; label: string; detail: string };
   nextSteps: string[];
+  /** Loans: likely reasons for rejection, each with a fix. */
+  risks?: Array<{ level: 'high' | 'medium'; title: string; fix: string }>;
   channels: Array<{ channel: string; at: number }>;
   updatedAt: number;
 }
@@ -224,8 +226,9 @@ export const autofillApi = {
   deleteAll: () => call('/session', { method: 'DELETE', json: {} }),
 
   schemes: () => call<{ schemes: SchemeInfo[] }>('/schemes'),
-  intent: (text: string) =>
-    call<{ wantsToApply: boolean; schemeId: string | null; scheme: SchemeInfo | null; relatedSchemes: SchemeInfo[]; reason: string; matchedBy: string }>('/intent', { method: 'POST', json: { text } }),
+  /** `language` (e.g. "Hindi") is the language the one-line reason is written in. */
+  intent: (text: string, language?: string) =>
+    call<{ wantsToApply: boolean; schemeId: string | null; scheme: SchemeInfo | null; relatedSchemes: SchemeInfo[]; reason: string; matchedBy: string }>('/intent', { method: 'POST', json: { text, language } }),
   recommend: () => call<{ recommendations: SchemeInfo[]; note: string }>('/recommend'),
 
   updateProfile: (updates: Partial<Record<ProfileKey, string>>, source: string, confirm = false) =>

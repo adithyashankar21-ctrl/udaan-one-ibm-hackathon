@@ -86,7 +86,7 @@ export function detectIntentLocal(text: string): { wantsToApply: boolean; scheme
  * from keywords; anything descriptive goes to Gemini, which can also suggest related items
  * (e.g. an income certificate AND the scholarship it is needed for).
  */
-export async function detectIntent(generate: Generate, text: string) {
+export async function detectIntent(generate: Generate, text: string, language = 'English') {
   const local = detectIntentLocal(text);
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   if (local.schemeId && words <= 6) return { ...local, related: [] as string[], matchedBy: 'keywords' as const, reason: '' };
@@ -98,6 +98,7 @@ export async function detectIntent(generate: Generate, text: string) {
       {
         contents: `A citizen in India said (any language): "${text.slice(0, 600)}"
 From the list below, choose the ONE government scheme, loan, or official document / certificate service that best matches what they need to apply for now, and up to 2 related items they will probably also need (for example, a scholarship usually also needs an income certificate and a caste certificate; a bank loan need may also fit a cheaper government loan scheme). Use "none" if nothing fits.${local.schemeId ? `\nA keyword match suggested: ${local.schemeId} — use it only if it truly fits.` : ''}
+Write "reason" as one short sentence to the person ("you"), entirely in ${language} in its own script, with no English words except acronyms in capitals.
 ${options}`,
         config: {
           responseMimeType: 'application/json',
@@ -107,7 +108,7 @@ ${options}`,
               schemeId: { type: Type.STRING, enum: [...ids, 'none'] },
               related: { type: Type.ARRAY, items: { type: Type.STRING, enum: ids } },
               wantsToApply: { type: Type.BOOLEAN },
-              reason: { type: Type.STRING },
+              reason: { type: Type.STRING, description: `One short sentence speaking to the person ("you"), written entirely in ${language} in its own script` },
             },
             required: ['schemeId', 'related', 'wantsToApply', 'reason'],
           },

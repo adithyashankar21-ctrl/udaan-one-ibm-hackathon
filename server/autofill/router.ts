@@ -350,7 +350,8 @@ export function createAutofillRouter(generate: Generate) {
   router.post('/intent', async (req, res) => {
     if (!aiLimit(req.ip || 'ip')) return res.status(429).json({ error: 'Too many requests' });
     const text = String(req.body?.text || '').slice(0, 1000);
-    const intent = await detectIntent(generate, text);
+    const language = String(req.body?.language || 'English').replace(/[^A-Za-z ()-]/g, '').slice(0, 40) || 'English';
+    const intent = await detectIntent(generate, text, language);
     res.json({ ...intent, scheme: intent.schemeId ? schemeInfo(intent.schemeId) : null, relatedSchemes: (intent.related as string[]).map((id: string) => schemeInfo(id)).filter(Boolean) });
   });
 

@@ -7,11 +7,11 @@ import { maskNumbers, unmaskNumbers } from '../data/languageTools';
  * this browser, so each string is fetched once.
  */
 
-// v2: earlier copies could hold translations that mixed in another language's letters
-const STORE_KEY = (lang: string) => `udaan.i18n.v2.${lang}`;
+// v3: earlier copies could hold translations that mixed in English or another language's letters
+const STORE_KEY = (lang: string) => `udaan.i18n.v3.${lang}`;
 try {
   Object.keys(localStorage)
-    .filter((k) => /^udaan\.i18n\.[a-z]{2}$/.test(k))
+    .filter((k) => /^udaan\.i18n\.(?:v2\.)?[a-z]{2}$/.test(k))
     .forEach((k) => localStorage.removeItem(k));
 } catch {}
 const memory = new Map<string, Map<string, string>>();

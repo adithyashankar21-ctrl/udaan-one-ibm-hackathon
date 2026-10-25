@@ -287,6 +287,28 @@ export async function generateDraftPdf(view: DraftView, opts: { aadhaarFull?: st
   }
   y -= 10;
 
+  // Loans: the rejection check, so the person can fix things before going to the bank
+  if (view.risks?.length) {
+    need(40);
+    text('BEFORE YOU SUBMIT - POSSIBLE REASONS FOR REJECTION', M, 9.5, bold, rgb(0.6, 0.2, 0.1));
+    y -= 15;
+    for (const r of view.risks) {
+      const lines = wrap(latin(`[${r.level === 'high' ? 'LIKELY REJECTION' : 'MAY DELAY'}] ${r.title}`).text, bold, 8.5, W - 2 * M - 12);
+      const fix = wrap(latin(`Fix: ${r.fix}`).text, font, 8, W - 2 * M - 24);
+      need((lines.length + fix.length) * 11 + 4);
+      for (const l of lines) {
+        page.drawText(l, { x: M + 6, y, size: 8.5, font: bold, color: NAVY });
+        y -= 11;
+      }
+      for (const l of fix) {
+        page.drawText(l, { x: M + 18, y, size: 8, font, color: MUTED });
+        y -= 11;
+      }
+      y -= 3;
+    }
+    y -= 10;
+  }
+
   // Loans: compare every lender for this loan at the amount and period asked for
   if (loan && loan.offers.length > 1) {
     need(40 + loan.offers.length * 26);

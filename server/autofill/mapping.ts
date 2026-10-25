@@ -260,8 +260,80 @@ export interface DraftView {
   eligibility: ReturnType<typeof eligibilityFor>;
   status: { code: string; label: string; detail: string };
   nextSteps: string[];
+  /** Loans: likely reasons a lender would reject this application, each with a fix. */
+  risks?: LoanRisk[];
   channels: Draft['channels'];
   updatedAt: number;
+}
+
+export interface LoanRisk {
+  level: 'high' | 'medium';
+  title: string;
+  fix: string;
+}
+
+/** Answers that usually decide a loan on their own. */
+const DECIDING_FIELDS = new Set(['loanDefault', 'socialCategory', 'annualFamilyIncome', 'ownsPuccaHouse', 'admissionType', 'greenfield', 'ownershipShare', 'monthlyIncome', 'loanAmount', 'dateOfBirth']);
+
+/**
+ * Rejection predictor: the usual reasons banks turn a loan down, checked against this draft —
+ * missing papers, answers that rule the person out, income that does not add up, the wrong
+ * category, an EMI that is too heavy, too little own money in the project.
+ */
+function loanRisks(schemeId: string, fields: FieldView[], documents: RequirementView[]): LoanRisk[] {
+  const loan = loanDetails(schemeId);
+  if (!loan) return [];
+  const risks: LoanRisk[] = [];
+  const val = (k: string) => fields.find((f) => f.key === k)?.value || '';
+  const num = (k: string) => {
+    const n = Number(normaliseMoney(val(k)) || NaN);
+    return isFinite(n) ? n : NaN;
+  };
+
+  if (loan.statusNote) risks.push({ level: 'high', title: 'This scheme may not be open right now', fix: loan.statusNote });
+  for (const d of documents.filter((x) => x.required && !x.have)) {
+    risks.push({ level: d.manual ? 'medium' : 'high', title: `Missing: ${d.label}`, fix: d.manual ? d.note || 'Bring it to the bank.' : `Upload it here, or carry it to the bank. Accepted: ${d.accepted.slice(0, 4).join(', ')}.` });
+  }
+  for (const d of documents) {
+    for (const r of d.rejected) risks.push({ level: 'high', title: `${r.label} cannot be used: ${r.reason}`, fix: `Upload a different ${d.label.toLowerCase()}.` });
+    for (const w of d.warnings) risks.push({ level: 'medium', title: w, fix: 'Sort this out before you go to the bank.' });
+  }
+  for (const f of fields) {
+    for (const issue of f.issues) {
+      risks.push({ level: DECIDING_FIELDS.has(f.key) ? 'high' : 'medium', title: `${f.label}: ${issue}`, fix: 'Check this answer — correct it if it is wrong, or ask the lender whether you still qualify.' });
+    }
+  }
+  const yearly = num('annualFamilyIncome');
+  const monthly = num('monthlyIncome');
+  if (yearly > 0 && monthly > 0 && Math.abs(monthly * 12 - yearly) / Math.max(yearly, monthly * 12) > 0.4) {
+    risks.push({
+      level: 'medium',
+      title: `Income does not match: ${formatRupees(monthly)} a month is ${formatRupees(monthly * 12)} a year, but the yearly income says ${formatRupees(yearly)}`,
+      fix: 'Banks compare these with your income certificate and bank statement. Use figures that match your documents.',
+    });
+  }
+  const category = val('socialCategory');
+  const needs: Record<string, RegExp> = { nsfdc: /^SC$/, 'loan-nbcfdc': /^OBC$/ };
+  if (needs[schemeId] && category && !needs[schemeId].test(category)) {
+    risks.push({ level: 'high', title: `Category: this loan is for ${schemeId === 'nsfdc' ? 'SC' : 'OBC'} applicants, but you chose ${category}`, fix: 'Choose the loan made for your category, or correct the category if it is wrong.' });
+  }
+  const special = val('specialCategory');
+  if (schemeId === 'loan-pmegp' && /^(SC|ST|OBC)$/.test(special) && !documents.find((d) => d.label.toLowerCase().includes('caste'))?.have) {
+    risks.push({ level: 'medium', title: 'Higher subsidy claimed without a caste certificate', fix: 'Upload your caste certificate, or the bank will give only the general-category subsidy.' });
+  }
+  const cost = num('projectCost');
+  const own = num('ownContribution');
+  if (schemeId === 'loan-pmegp' && cost > 0) {
+    const required = /None/i.test(special) || !special ? 0.1 : 0.05;
+    if (!(own >= cost * required)) {
+      risks.push({ level: 'high', title: `Own contribution should be at least ${required * 100}% of the project cost (${formatRupees(cost * required)})`, fix: 'Arrange your share of the money before applying — banks check it.' });
+    }
+  }
+  if (!val('lender') || /not decided/i.test(val('lender'))) {
+    if (loan.offers.length > 1) risks.push({ level: 'medium', title: 'No lender chosen yet', fix: 'Pick a lender — the comparison at the end of the PDF shows rates and estimated EMIs.' });
+  }
+  const order = { high: 0, medium: 1 };
+  return risks.sort((a, b) => order[a.level] - order[b.level]).slice(0, 10);
 }
 
 export function fieldsHash(fields: FieldView[]): string {
@@ -388,6 +460,7 @@ export function buildDraftView(session: SessionData, draft: Draft): DraftView {
     eligibility: eligibilityFor(draft.schemeId, session.profile),
     status,
     nextSteps,
+    risks: loanRisks(draft.schemeId, fields, documents),
     channels: draft.channels,
     updatedAt: draft.updatedAt,
   };

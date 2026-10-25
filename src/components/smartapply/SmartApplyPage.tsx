@@ -500,18 +500,19 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
             <h2 id="drafts-h" className="text-xl font-extrabold text-navy">{t.yourDrafts}</h2>
             <ul className="mt-4 grid gap-3 md:grid-cols-2">
               {drafts.map((d) => (
-                <li key={d.id} className="card flex flex-wrap items-center gap-4 p-4">
+                <li key={d.id} className="card flex min-w-0 flex-wrap items-center gap-4 p-4">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy-50 text-navy">
                     <FileSearch className="h-5 w-5" aria-hidden />
                   </span>
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 basis-40">
                     <span className="block truncate font-bold text-navy">{d.schemeName}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                       <StatusPill tone={d.status.code === 'prepared' || d.status.code === 'approved' ? 'success' : d.status.code === 'review' ? 'info' : 'warning'}>{d.status.label}</StatusPill>
                       Updated {new Date(d.updatedAt).toLocaleDateString('en-IN')}
                     </span>
                   </span>
-                  <span className="flex gap-2">
+                  {/* On phones the buttons take their own row, so the name keeps the width */}
+                  <span className="flex w-full justify-end gap-2 sm:w-auto">
                     {voice.supported && (
                       <button onClick={() => resume(d.id, true)} className="btn btn-outline btn-sm" aria-label={`Continue ${d.schemeName} by voice`}>
                         <AudioLines className="h-4 w-4" aria-hidden /> By voice

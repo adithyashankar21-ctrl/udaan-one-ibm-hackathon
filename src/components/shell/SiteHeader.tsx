@@ -129,11 +129,11 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
   ];
 
   const modes: Array<{ id: ChannelMode; label: string; desc: string; icon: React.ElementType }> = [
-    { id: 'voice_studio', label: 'AI Voice Studio', desc: 'Full voice conversation', icon: Mic },
-    { id: 'ivr', label: 'IVR Helpline', desc: 'Phone-style voice menu', icon: PhoneCall },
-    { id: 'whatsapp', label: 'WhatsApp Assistant', desc: 'Chat-style guidance', icon: MessageSquare },
-    { id: 'kiosk', label: 'Kiosk Mode', desc: 'Large, simple public screen', icon: Store },
-    { id: 'district_map', label: 'District Opportunity Map', desc: 'Training & opportunities by district', icon: MapPin },
+    { id: 'voice_studio', label: 'Talk to UDAAN AI', desc: 'Full voice conversation', icon: Mic },
+    { id: 'ivr', label: 'Phone helpline', desc: 'Phone-style voice menu', icon: PhoneCall },
+    { id: 'whatsapp', label: 'WhatsApp assistant', desc: 'Chat-style guidance', icon: MessageSquare },
+    { id: 'kiosk', label: 'Kiosk mode', desc: 'Large, simple public screen', icon: Store },
+    { id: 'district_map', label: 'District map', desc: 'Training & opportunities by district', icon: MapPin },
   ];
 
   const activeLang = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
@@ -167,7 +167,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <span className="block text-[17px] font-extrabold tracking-[-0.01em] text-navy">
                 UDAAN <span className="text-teal-600">ONE</span>
               </span>
-              <span className="block truncate whitespace-nowrap text-[11px] font-medium text-muted">AI for Opportunity. Technology for All.</span>
+              <span className="hidden truncate whitespace-nowrap text-[11px] font-medium text-muted sm:block">AI for Opportunity. Technology for All.</span>
             </span>
           </button>
 
@@ -313,8 +313,9 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <span translate={profileName ? "no" : undefined} className="hidden max-w-[7rem] truncate 2xl:inline">{profileName || t.profile}</span>
             </button>
 
+            {/* On phones, sign out is in the menu: the header has room for four buttons only */}
             {authEnabled && (
-              <button onClick={signOut} className={iconBtn} aria-label="Sign out" title="Sign out">
+              <button onClick={signOut} className={`${iconBtn} hidden sm:flex`} aria-label="Sign out" title="Sign out">
                 <LogOut className="h-5 w-5" aria-hidden />
               </button>
             )}
@@ -366,6 +367,11 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <User className="h-4 w-4" aria-hidden />
               {profileName || t.profile}
             </button>
+            {authEnabled && (
+              <button onClick={signOut} className="btn btn-outline btn-lg mt-2 w-full sm:hidden">
+                <LogOut className="h-4 w-4" aria-hidden /> Sign out
+              </button>
+            )}
           </nav>
         )}
       </header>

@@ -15,6 +15,7 @@ import type { BeneficiaryProfile } from '../../src/types';
 import type { Generate } from './ocr';
 import type { ProfileState } from './types';
 import { ageFromDob } from './validate';
+import { spokenYesNo } from '../../src/data/voiceWords';
 
 const APPLY_WORDS =
   /\b(apply|application|applying|form|register|registration|enrol|enroll|fill)\b|आवेदन|फॉर्म|फ़ॉर्म|अर्ज़ी|अर्जी|पंजीकरण|अर्ज|விண்ணப்ப|படிவம்|దరఖాస్తు|ఫారం|ಅರ್ಜಿ|ನೋಂದಣಿ|അപേക്ഷ|ഫോം|আবেদন|અરજી|ਅਰਜ਼ੀ|ଆବେଦନ|درخواست/i;
@@ -79,6 +80,42 @@ export function detectIntentLocal(text: string): { wantsToApply: boolean; scheme
   const wantsLoan = LOAN_WORDS.test(t);
   const wantsToApply = APPLY_WORDS.test(t) || ((isDocument || wantsLoan) && DOC_ACTION_WORDS.test(t));
   return { wantsToApply, schemeId: best, wantsLoan };
+}
+
+/** Asking for a scheme by name ("I want PM Vishwakarma", "मुझे मुद्रा लोन चाहिए"). */
+const WANT_WORDS =
+  /\b(want|need|get|avail|take|join|start|chahiye|chahie|chahta|chahti|karna hai|karwana|lena|leni)\b|चाहिए|चाहता|चाहती|लेना|करना है|करवाना|हवे|हवा|வேண்டும்|కావాలి|ಬೇಕು|വേണം|চাই|જોઈએ|ਚਾਹੀਦਾ|ਚਾਹੀਦੀ|ଦରକାର|چاہیے/i;
+/** Asking about a scheme is not asking to apply for it. */
+const INFO_WORDS =
+  /\b(what is|what's|tell me|about|explain|know|details|information|eligible|eligibility|benefits?|how does|kya hai|ke baare|bare mein|batao)\b|क्या है|के बारे|बारे में|जानकारी|बताओ|बताइए|पात्र|काय आहे|माहिती|என்ன|பற்றி|ఏమిటి|గురించి|ಏನು|ಬಗ್ಗೆ|എന്താണ്|കുറിച്ച്|কী|সম্পর্কে|શું છે|વિશે|ਕੀ ਹੈ|ਬਾਰੇ|କଣ|ବିଷୟରେ|کیا ہے|کے بارے/i;
+
+type ChatTurn = { role?: string; content?: unknown };
+
+/**
+ * Whether the person wants to apply, read from the conversation and not only the last message:
+ * "I want to apply" followed by "PM Vishwakarma", or "yes, fill it" after the assistant offered
+ * to fill the application for a scheme it named, both start that application.
+ */
+export function detectApplyInConversation(messages: ChatTurn[]) {
+  const turns = (Array.isArray(messages) ? messages : []).filter((m) => typeof m?.content === 'string' && m.content.trim());
+  const lastAt = turns.map((m) => m.role).lastIndexOf('user');
+  const last = lastAt >= 0 ? String(turns[lastAt].content) : '';
+  const local = detectIntentLocal(last);
+  if (local.wantsToApply || !last) return local;
+  const asking = INFO_WORDS.test(last);
+  // "I want PM Vishwakarma"
+  if (local.schemeId && !asking && WANT_WORDS.test(last)) return { ...local, wantsToApply: true };
+  // Just asked to apply, now names it: "PM Vishwakarma"
+  const earlierUser = turns.slice(0, lastAt).filter((m) => m.role === 'user').slice(-2).map((m) => String(m.content));
+  if (local.schemeId && !asking && earlierUser.some((u) => detectIntentLocal(u).wantsToApply)) return { ...local, wantsToApply: true };
+  // "Yes" to the assistant's offer to fill the application for the scheme it named
+  const offer = [...turns.slice(0, lastAt)].reverse().find((m) => m.role === 'assistant');
+  if (!local.schemeId && offer && spokenYesNo(last) === 'yes') {
+    const said = String(offer.content);
+    const named = detectIntentLocal(said);
+    if (named.schemeId && APPLY_WORDS.test(said)) return { wantsToApply: true, schemeId: named.schemeId, wantsLoan: named.wantsLoan || local.wantsLoan };
+  }
+  return local;
 }
 
 /**

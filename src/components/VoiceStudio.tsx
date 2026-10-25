@@ -125,7 +125,7 @@ export const VoiceStudio: React.FC<VoiceStudioProps> = ({
   useEffect(() => {
     const onIntent = (e: Event) => {
       const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
-      if (detail.channel !== 'voice' || !detail.schemeId || deskRef.current?.active) return;
+      if (detail.channel !== 'voice' || !detail.schemeId || detail.target || deskRef.current?.active) return;
       // Let the assistant finish its sentence first
       aiService.whenSilent().then(() => deskRef.current?.startNew(detail.schemeId!));
     };

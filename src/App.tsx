@@ -40,6 +40,7 @@ import { getSmartApplyStrings } from './data/smartApplyStrings';
 import { aiService } from './services/aiService';
 import {
   APPLY_INTENT_EVENT,
+  NAV_INTENT_EVENT,
   autofillApi,
   toAutofillUpdates,
   toBeneficiaryPartial,
@@ -231,12 +232,18 @@ export default function App() {
   useEffect(() => {
     const onIntent = (e: Event) => {
       const detail = (e as CustomEvent<ApplyIntentDetail>).detail;
+      // "Fill it in Smart Apply": open Smart Apply, which fills it by voice
+      if (detail.target === 'smart_apply' && detail.schemeId) {
+        aiService.whenSilent().then(() => openSmartApply({ schemeId: detail.schemeId, channel: 'voice' }));
+        return;
+      }
       // The helpline call takes the application itself, in the call
-      if (detail.channel === 'helpline' && channelRef.current === 'ivr' && detail.schemeId) return;
+      if (detail.channel === 'helpline' && channelRef.current === 'ivr' && detail.schemeId) return setApplyIntent(null);
       // The voice agent fills the application itself, in its own conversation
-      if (detail.channel === 'voice' && channelRef.current === 'voice_studio' && detail.schemeId) return;
+      if (detail.channel === 'voice' && channelRef.current === 'voice_studio' && detail.schemeId) return setApplyIntent(null);
       // From the home orb: carry on in the full voice assistant, which takes the application
       if (detail.channel === 'voice' && channelRef.current === 'home' && detail.schemeId) {
+        setApplyIntent(null);
         aiService.whenSilent().then(() => {
           setDeskEntry({ schemeId: detail.schemeId! });
           setCurrentChannel('voice_studio');
@@ -244,11 +251,27 @@ export default function App() {
         return;
       }
       // The WhatsApp bot takes the application in its chat
-      if (detail.channel === 'chat' && channelRef.current === 'whatsapp' && detail.schemeId) return;
+      if (detail.channel === 'chat' && channelRef.current === 'whatsapp' && detail.schemeId) return setApplyIntent(null);
       setApplyIntent(detail);
     };
     window.addEventListener(APPLY_INTENT_EVENT, onIntent);
     return () => window.removeEventListener(APPLY_INTENT_EVENT, onIntent);
+  }, []);
+
+  // A voice assistant that hears "open the loans page" goes there once its reply has been spoken
+  useEffect(() => {
+    const onNav = (e: Event) => {
+      const page = (e as CustomEvent<{ page: ChannelMode }>).detail?.page;
+      if (!page) return;
+      setApplyIntent(null);
+      setLearnIntent(null);
+      aiService.whenSilent().then(() => {
+        if (page === 'smart_apply') openSmartApply({ channel: 'voice' });
+        else setCurrentChannel(page);
+      });
+    };
+    window.addEventListener(NAV_INTENT_EVENT, onNav);
+    return () => window.removeEventListener(NAV_INTENT_EVENT, onNav);
   }, []);
 
   // Any assistant channel that hears "teach me…" offers the matching Learning Hub course

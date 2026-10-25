@@ -398,8 +398,17 @@ export interface ApplyIntentDetail {
   schemeId: string | null;
   channel: string;
   text?: string;
+  /** 'smart_apply': fill it by voice on the Smart Apply page instead of in the conversation. */
+  target?: 'smart_apply';
 }
 
 export function announceApplyIntent(detail: ApplyIntentDetail) {
   window.dispatchEvent(new CustomEvent<ApplyIntentDetail>(APPLY_INTENT_EVENT, { detail }));
+}
+
+/** A voice assistant heard "open the loans page": the app goes there once the reply is spoken. */
+export const NAV_INTENT_EVENT = 'udaan:nav-intent';
+
+export function announceNavIntent(page: string) {
+  window.dispatchEvent(new CustomEvent<{ page: string }>(NAV_INTENT_EVENT, { detail: { page } }));
 }

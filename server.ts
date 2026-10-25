@@ -13,7 +13,8 @@ import { createLoansRouter } from './server/loans/router';
 import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
 import { detectRoadmapIntent } from './server/learn/roadmapIntent';
-import { detectIntentLocal } from './server/autofill/schemes';
+import { detectApplyInConversation } from './server/autofill/schemes';
+import { PAGE_LABELS, detectNavIntent, wantsSmartApplyPage } from './src/data/voiceNavigation';
 import { FORM_SCHEMA_MAP } from './src/data/autofillSchema';
 import { LOAN_LISTINGS } from './src/data/loanCatalog';
 
@@ -157,14 +158,25 @@ app.post('/api/ai/chat', async (req, res) => {
 
   // Shared autofill workflow: any channel that hears "I want to apply…" gets routed to Smart Apply
   const lastUserText = [...(Array.isArray(messages) ? messages : [])].reverse().find((m: any) => m?.role === 'user')?.content || '';
-  const localIntent = detectIntentLocal(String(lastUserText));
-  const applyIntent = localIntent.wantsToApply ? { schemeId: localIntent.schemeId } : null;
+  const localIntent = detectApplyInConversation(Array.isArray(messages) ? messages : []);
+  // The voice assistants can also take the person to a page ("open the loans page")
+  const onScreenVoice = /voice/i.test(String(channel)) && !/helpline|ivr|phone|whatsapp|kiosk/i.test(String(channel));
+  const heardPage = onScreenVoice ? detectNavIntent(String(lastUserText)) : null;
+  // "Fill PM Vishwakarma in Smart Apply": the application is filled by voice on the Smart Apply page
+  const applyOnPage = onScreenVoice && localIntent.schemeId && wantsSmartApplyPage(String(lastUserText)) ? 'smart_apply' : undefined;
+  const applyIntent = localIntent.wantsToApply && (localIntent.schemeId || !heardPage) ? { schemeId: localIntent.schemeId, target: applyOnPage } : null;
+  const navIntent = !applyIntent && heardPage ? { page: heardPage } : null;
+  const navNote = navIntent
+    ? `\n7. The app is now opening the ${PAGE_LABELS[navIntent.page]} page for the person. In one short sentence, say you are opening it and what they can do there. Do not ask anything else.`
+    : '';
   const applyNote = applyIntent
     ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one short sentence, ${
         !applyIntent.schemeId
           ? localIntent.wantsLoan
             ? 'act as a loan advisor: ask ONE follow-up question at a time until you know what the loan is for (business, farming or dairy, studies, a house, a self-help group, or quick money against gold), roughly how much, whether the business is new or running, and their category (SC, ST, OBC, minority or general) — never ask for scheme names. Then name the single best-fitting loan from the loan list and say why in a few words (for example lowest cost, no collateral, made for their group), cheaper government loan schemes first. If they say their monthly income, check the EMI: it should stay under 40% of income including EMIs they already pay — say plainly whether it fits or is too heavy. Say UDAAN ONE can fill the application by voice and find the nearest bank.'
             : 'ask which scheme, loan or document they want to apply for.'
+          : applyOnPage
+            ? 'say Smart Apply is opening now and will fill the application with them by voice, one question at a time.'
           : /helpline|ivr|phone/i.test(String(channel))
             ? 'say you will now take their application details in this call, one question at a time.'
             : /voice|whatsapp|chat/i.test(String(channel))
@@ -174,7 +186,7 @@ app.post('/api/ai/chat', async (req, res) => {
     : '';
 
   // Career roadmap requests ("how can I become an electrician?") get a step-by-step roadmap on screen
-  const roadmap = applyIntent ? null : detectRoadmapIntent(String(lastUserText));
+  const roadmap = applyIntent || navIntent ? null : detectRoadmapIntent(String(lastUserText));
   const roadmapIntent = roadmap?.wantsRoadmap ? { request: roadmap.request } : null;
   const roadmapNote = roadmapIntent
     ? `\n7. ROADMAP MODE — the person wants a career roadmap. In 2 or 3 short sentences, name the goal as you understand it and the very first practical step (for example where to train or register). ${
@@ -183,7 +195,7 @@ app.post('/api/ai/chat', async (req, res) => {
     : '';
 
   // Learning requests ("teach me Python", "I want to learn tailoring") are taught here and handed to the Learning Hub
-  const learn = applyIntent || roadmapIntent ? null : detectLearnIntent(String(lastUserText));
+  const learn = applyIntent || navIntent || roadmapIntent ? null : detectLearnIntent(String(lastUserText));
   const learnIntent = learn?.wantsToLearn ? { courseId: learn.courseId, topic: learn.topic } : null;
   const teachNote = learnIntent
     ? `\n7. TEACHING MODE — the person wants to learn${learnIntent.courseId ? ` (${LEARN_COURSE_NAMES[learnIntent.courseId] || learnIntent.courseId})` : learnIntent.topic ? ` about "${learnIntent.topic}"` : ''}. Act as a patient teacher, not a scheme counsellor:
@@ -223,7 +235,7 @@ ${LOAN_FACTS}
 3. PERSONALISE: if the person shares their name, trade or district, use it and give 1–2 concrete next steps for their situation.
 4. LANGUAGE: reply entirely in ${language}, in its native script, in simple everyday words — even when the question is typed in English. Only if the person clearly speaks a different language than ${language}, reply in theirs. Never mix in words or letters from another Indian language or another script (scheme names like PM Vishwakarma and acronyms like PAN may stay in English).
 5. VOICE STYLE: 2 to 4 short, warm sentences. No bullet lists, no markdown, no emojis — this will be spoken aloud. End with one helpful next step (for example, offering to prepare their Kaushal Patra roadmap).
-6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${roadmapNote}${teachNote}
+6. YOU ARE ALSO A TEACHER: UDAAN ONE has a Learning Hub with free AI lessons — Python, C, Java, web development, SQL, data structures and algorithms, computer and digital basics, and job readiness — and it can build a course on any other topic (a trade, a school subject, a language). When someone wants to learn something, teach it directly and correctly instead of only pointing to schemes.${applyNote}${navNote}${roadmapNote}${teachNote}
 `;
 
   // Sanitize and format multi-turn contents for Gemini
@@ -288,7 +300,7 @@ ${LOAN_FACTS}
       { retryBusy: false, timeoutMs: 9000 }
     );
     const replyText = response.text?.trim();
-    if (replyText) return res.json({ reply: replyText, applyIntent, learnIntent, roadmapIntent });
+    if (replyText) return res.json({ reply: replyText, applyIntent, navIntent, learnIntent, roadmapIntent });
   } catch (err: any) {
     lastError = err;
   }
@@ -297,7 +309,7 @@ ${LOAN_FACTS}
   console.error('All Gemini chat models failed, sending offline notice:', lastError?.message);
   const lastUserMsg = rawMessages && rawMessages.length > 0 ? rawMessages[rawMessages.length - 1].content : '';
   const reply = offlineReply(language, lastUserMsg);
-  res.json({ reply, fallback: true, applyIntent, learnIntent, roadmapIntent });
+  res.json({ reply, fallback: true, applyIntent, navIntent, learnIntent, roadmapIntent });
 });
 
 // Comprehensive Livelihood & NSQF Gap Mapping endpoint

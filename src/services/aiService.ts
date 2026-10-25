@@ -1,5 +1,5 @@
 import { BeneficiaryProfile, ChatMessage, LivelihoodAnalysis } from '../types';
-import { announceApplyIntent } from './autofillApi';
+import { announceApplyIntent, announceNavIntent } from './autofillApi';
 import { announceLearnIntent } from './learnApi';
 import { announceRoadmapIntent } from './roadmaps';
 import { SUPPORTED_LANGUAGES } from '../data/languages';
@@ -357,8 +357,10 @@ export const aiService = {
       // Any channel that hears "I want to apply…" hands off to the shared Smart Apply workflow
       if (data.applyIntent) {
         const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content;
-        announceApplyIntent({ schemeId: data.applyIntent.schemeId || null, channel: channelKind(channel), text: lastUser });
+        announceApplyIntent({ schemeId: data.applyIntent.schemeId || null, channel: channelKind(channel), text: lastUser, target: data.applyIntent.target || undefined });
       }
+      // "Open the loans page": the app goes there after the reply is spoken
+      if (data.navIntent?.page) announceNavIntent(data.navIntent.page);
       // "Make me a career roadmap…" / "how do I become…": the app makes the step-by-step roadmap
       if (data.roadmapIntent) {
         announceRoadmapIntent({ request: data.roadmapIntent.request || undefined, channel: channelKind(channel) });

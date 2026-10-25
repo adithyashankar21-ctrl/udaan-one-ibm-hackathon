@@ -49,6 +49,7 @@ import {
 } from './services/autofillApi';
 import { LEARN_INTENT_EVENT, type LearningEntry } from './services/learnApi';
 import { COURSE_MAP } from './data/learningTracks';
+import { setPrivateValues } from './services/translate';
 
 // Clean baseline profile for real citizen data entry
 const CLEAN_EMPTY_PROFILE: BeneficiaryProfile = {
@@ -179,6 +180,23 @@ export default function App() {
       .then(handleAutofillSession)
       .catch(() => setAutofillSession({ hasSession: false, consent: null, consentVersion: '', retentionDays: 7 }));
   }, [handleAutofillSession]);
+
+  // The person's own details are never sent for translation (translations are shared by everyone)
+  useEffect(() => {
+    const f = autofillSession?.profile?.fields || {};
+    const names = [f.fullName?.value, f.fatherSpouseName?.value, f.motherName?.value, userProfile.name, userProfile.fatherSpouseName];
+    setPrivateValues([
+      ...names,
+      // Parts of a name are shown on their own too ("Asha" in a greeting)
+      ...names.flatMap((n) => String(n || '').split(/\s+/).filter((w) => w.length >= 3)),
+      ...(['mobile', 'email', 'addressLine', 'pincode', 'aadhaar', 'panNumber', 'casteCertificateNumber', 'incomeCertificateNumber', 'bankAccountNumber', 'bankIfsc', 'rationCardNumber', 'passportNumber', 'voterIdNumber', 'drivingLicenceNumber', 'foreignPassportNumber', 'pioCardNumber'] as const).map((k) => f[k]?.value),
+      userProfile.phoneNumber,
+      userProfile.residentialAddress,
+      userProfile.bankAccountNumber,
+      userProfile.bplRationCardNumber,
+      ...(autofillSession?.drafts || []).map((d) => d.reference),
+    ]);
+  }, [autofillSession, userProfile]);
 
   // Every page change starts at the top of the new page
   useEffect(() => {

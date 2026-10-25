@@ -1,5 +1,5 @@
 import type { LanguageCode } from '../types';
-import { maskNumbers, unmaskNumbers } from '../data/languageTools';
+import { maskNumbers, maskPrivate, unmaskNumbers, unmaskPrivate } from '../data/languageTools';
 
 /**
  * English → any supported language, through the server's cached Gemini translation.
@@ -49,8 +49,32 @@ function persist(lang: string) {
   );
 }
 
+/* ── Personal details never leave for translation ─────────────────────
+ * Translations are shared by everyone (cached on the server), so a person's name, address,
+ * application reference or ID numbers must never be sent. They are swapped for placeholders
+ * ({pa}, {pb}…) before a text goes out and put back into the translation when it returns:
+ * "My profile: Asha Devi" is translated as "My profile: {pa}".
+ */
+let privateValues: string[] = [];
+
+/** The signed-in person's own details to keep out of translation (set by the app from the profile). */
+export function setPrivateValues(values: Array<string | undefined | null>) {
+  const set = new Set<string>();
+  for (const v of values) {
+    const s = String(v ?? '').trim();
+    if (s.length >= 3 && /[\p{L}\d]/u.test(s)) set.add(s);
+  }
+  // Longest first, so "Asha Devi Kumari" is caught before "Asha Devi"
+  privateValues = [...set].sort((a, b) => b.length - a.length);
+}
+
+/** `text` with this person's details and personal IDs as placeholders, and the details to put back. */
+const shield = (text: string) => maskPrivate(text, privateValues);
+const unshield = unmaskPrivate;
+
 /** True when a text has English words worth translating (not only numbers, codes or symbols). */
-export const needsTranslation = (text: string) => /[A-Za-z]{2,}/.test(text) && !/^(https?:\/\/|www\.)\S+$/i.test(text.trim()) && !/^\S+@\S+\.\S+$/.test(text.trim());
+export const needsTranslation = (text: string) =>
+  /[A-Za-z]{2,}/.test(text.replace(/\{p[a-z]\}/g, ' ')) && !/^(https?:\/\/|www\.)\S+$/i.test(text.trim()) && !/^\S+@\S+\.\S+$/.test(text.trim());
 
 /** The whole saved dictionary for each language (numbers as {0}…), loaded once. */
 const dictionaries = new Map<string, Record<string, string>>();
@@ -74,12 +98,14 @@ export function loadDictionary(lang: LanguageCode): Promise<void> {
 /** A translation already known, without waiting. */
 export const peekTranslation = (text: string, lang: LanguageCode): string | undefined => {
   if (lang === 'en') return text;
-  const hit = cacheFor(lang).get(text);
-  if (hit !== undefined) return hit;
+  const s = shield(text);
+  const back = (v: string) => (s.values.length ? unshield(v, s.values) ?? text : v);
+  const hit = cacheFor(lang).get(s.text);
+  if (hit !== undefined) return back(hit);
   const d = dictionaries.get(lang);
   if (!d) return undefined;
-  const { key, numbers } = maskNumbers(text);
-  return d[key] !== undefined ? unmaskNumbers(d[key], numbers) : undefined;
+  const { key, numbers } = maskNumbers(s.text);
+  return d[key] !== undefined ? back(unmaskNumbers(d[key], numbers)) : undefined;
 };
 
 async function flush(lang: string) {
@@ -125,7 +151,9 @@ function request(text: string, lang: string): Promise<string | null> {
 /** Translate now, ahead of interface text waiting in line (for words about to be spoken). */
 async function translateUrgently(texts: string[], lang: LanguageCode): Promise<string[]> {
   const cache = cacheFor(lang);
-  const missing = [...new Set(texts.filter((t) => needsTranslation(t) && !cache.has(t)))];
+  // Sent and cached with personal details as placeholders
+  const shielded = texts.map(shield);
+  const missing = [...new Set(shielded.map((s) => s.text).filter((t) => needsTranslation(t) && !cache.has(t)))];
   if (missing.length) {
     try {
       const res = await fetch('/api/i18n/translate', {
@@ -138,14 +166,27 @@ async function translateUrgently(texts: string[], lang: LanguageCode): Promise<s
       persist(lang);
     } catch {}
   }
-  return texts.map((t) => cache.get(t) ?? t);
+  return texts.map((t, i) => {
+    const v = cache.get(shielded[i].text);
+    return v === undefined ? t : unshield(v, shielded[i].values) ?? t;
+  });
 }
 
 /** Translations of `texts` (the English text itself where none could be made). */
 export async function translateTexts(texts: string[], lang: LanguageCode): Promise<string[]> {
   if (lang === 'en') return texts;
-  const cache = cacheFor(lang);
-  return Promise.all(texts.map(async (t) => (!needsTranslation(t) ? t : peekTranslation(t, lang) ?? cache.get(t) ?? (await request(t, lang)) ?? t)));
+  return Promise.all(
+    texts.map(async (t) => {
+      if (!needsTranslation(t)) return t;
+      const known = peekTranslation(t, lang);
+      if (known !== undefined) return known;
+      // Only the text with personal details as placeholders goes out
+      const s = shield(t);
+      if (!needsTranslation(s.text)) return t;
+      const v = await request(s.text, lang);
+      return v ? unshield(v, s.values) ?? t : t;
+    })
+  );
 }
 
 /** Written in an Indian script or Urdu already (so not to be translated again). */

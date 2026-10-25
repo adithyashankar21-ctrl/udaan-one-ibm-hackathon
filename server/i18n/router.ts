@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Type } from '@google/genai';
 import type { Generate } from '../autofill/ocr';
-import { dropEnglishGlosses, englishWordsIn, leavesEnglish, maskNumbers, mixesScripts, unmaskNumbers } from '../../src/data/languageTools';
+import { dropEnglishGlosses, englishWordsIn, leavesEnglish, maskNumbers, maskPrivate, mixesScripts, unmaskNumbers, unmaskPrivate } from '../../src/data/languageTools';
 import type { LanguageCode } from '../../src/types';
 
 const LANGUAGES: Record<string, string> = {
@@ -80,7 +80,7 @@ const rules = (language: string) => `Translate each English text of a government
 Rules:
 - Simple, everyday, respectful words a person with little schooling understands. Write EVERYTHING in the ${language} script — the reader must never see an English word.
 - Names of schemes, banks, lenders, portals, documents, places and products are written in the ${language} script too, using the official ${language} name when there is one (for example Aadhaar, MUDRA Yojana, PM Vishwakarma, Bank of Baroda, Skill India, Smart Apply, Learning Hub — all in ${language} letters).
-- Only these stay in Latin letters: the brand "UDAAN ONE", acronyms written in capitals (PAN, IFSC, OTP, PDF, PIN, AI, SBI, HDFC, EMI, KCC, PM-AJAY, NBFC), numbers, phone numbers, URLs, emails and placeholders in curly braces like {0} or {days}.
+- Only these stay in Latin letters: the brand "UDAAN ONE", acronyms written in capitals (PAN, IFSC, OTP, PDF, PIN, AI, SBI, HDFC, EMI, KCC, PM-AJAY, NBFC), numbers, phone numbers, URLs, emails and placeholders in curly braces like {0}, {pa} or {days} (keep every placeholder exactly as written).
 - Never return a text unchanged in English.
 - Keep the same punctuation, emoji and leading/trailing symbols. Keep line breaks.
 - A text that is only a name, code or number stays as it is.
@@ -159,14 +159,16 @@ export function createTranslator(generate: Generate): Translate {
       if (typeof out[i] !== 'string' || !out[i].trim()) return;
       out[i] = dropEnglishGlosses(out[i], t);
       // Never keep a translation that slips in another language's letters or leaves English words
-      const impure = mixesScripts(out[i], lang as LanguageCode, t) || leavesEnglish(out[i], t);
+      // Stray letters from other alphabets (e.g. "ɵ" after a placeholder) are a model glitch too
+      const stray = /[ƀ-ʯͰ-ϿЀ-ӿ]/.test(out[i]) && !/[ƀ-ʯͰ-ϿЀ-ӿ]/.test(t);
+      const impure = stray || mixesScripts(out[i], lang as LanguageCode, t) || leavesEnglish(out[i], t);
       if (!impure) cache[t] = out[i];
       else if (!retry) {
         mixed.push(t);
         mixedWords.push(englishWordsIn(out[i], t));
       }
       // Second try: keep it only if it is at least in the right script, never English unchanged
-      else if (!mixesScripts(out[i], lang as LanguageCode, t) && out[i].trim() !== t.trim()) {
+      else if (!stray && !mixesScripts(out[i], lang as LanguageCode, t) && out[i].trim() !== t.trim()) {
         cache[t] = out[i];
         stillEnglish.push([t, out[i]]);
       }
@@ -209,10 +211,12 @@ export function createTranslator(generate: Generate): Translate {
 
   return async (lang, texts, urgent = false) => {
     if (lang === 'en' || !LANGUAGES[lang]) return texts;
-    // Translate with numbers as placeholders, then put each text's own numbers back
-    const masked = texts.map(maskNumbers);
+    // Personal IDs (references, emails…) and numbers become placeholders, so only the sentence is
+    // translated and saved; each text's own values are put back afterwards
+    const hidden = texts.map((t) => maskPrivate(t));
+    const masked = hidden.map((h) => maskNumbers(h.text));
     const out = await translateKeys(lang, masked.map((m) => m.key), urgent);
-    return out.map((t, i) => (t == null ? null : unmaskNumbers(t, masked[i].numbers)));
+    return out.map((t, i) => (t == null ? null : unmaskPrivate(unmaskNumbers(t, masked[i].numbers), hidden[i].values)));
   };
 }
 

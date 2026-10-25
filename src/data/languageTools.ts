@@ -166,7 +166,8 @@ export function englishWordsIn(translation: string, original = ''): string[] {
     .replace(/https?:\/\/\S+|\S+@\S+\.\S+|\b[\w-]+(?:\.[\w-]+)*\.(?:gov|nic|org|co|com|in|net|bank|sbi|money)\b\S*/gi, ' ')
     // Units after a number: 50cc, 5km, 2kg
     .replace(/(\d|\})(?:cc|km|kg|mm|cm|ml|kW|GB|MB)(?![A-Za-z])/g, '$1')
-    .replace(/\{\d+\}/g, ' ')
+    // {0} numbers and {pa} personal details are placeholders
+    .replace(/\{\d+\}|\{p[a-z]\}/g, ' ')
     .replace(/\b(?:[a-z]-)?[A-Z][A-Z0-9]*(?:[-.&/+][A-Z0-9]+)*s?\b/g, ' ');
   return [...new Set(rest.match(/[A-Za-z][A-Za-z'’-]*[A-Za-z]/g) || [])];
 }
@@ -183,6 +184,52 @@ export function maskNumbers(text: string): { key: string; numbers: string[] } {
 }
 
 export const unmaskNumbers = (translation: string, numbers: string[]) => translation.replace(/\{(\d+)\}/g, (m, i) => numbers[Number(i)] ?? m);
+
+/**
+ * Translations are shared by everyone, so personal details must never be sent to the
+ * translator or saved with a translation. maskPrivate swaps them for {pa}, {pb}… placeholders:
+ * the `values` given (a person's name, address…) and IDs that are personal whoever they belong
+ * to (application references, emails, PAN, IFSC, voter ID, passport numbers).
+ */
+const PRIVATE_PATTERNS = [
+  /\bUD-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}\b/g,
+  /[^\s@{}]+@[^\s@]+\.[A-Za-z]{2,}/g,
+  /\b[A-Z]{5}\d{4}[A-Z]\b/g,
+  /\b[A-Z]{4}0[A-Z0-9]{6}\b/g,
+  /\b[A-Z]{3}\d{7}\b/g,
+  /\b[A-Z]\d{7}\b/g,
+];
+const privateSlot = (i: number) => `{p${String.fromCharCode(97 + i)}}`;
+
+/** `values`: each placeholder with the detail it stands for. */
+export function maskPrivate(text: string, values: string[] = []): { text: string; values: Array<[string, string]> } {
+  const found: Array<[string, string]> = [];
+  // Placeholders already in the text (masked by the browser) keep their letters
+  let next = new Set(text.match(/\{p[a-z]\}/g) || []).size;
+  const swap = (v: string) => {
+    const had = found.find(([, x]) => x === v);
+    if (had) return had[0];
+    if (next >= 26) return v;
+    const slot = privateSlot(next++);
+    found.push([slot, v]);
+    return slot;
+  };
+  let out = text;
+  // Whole IDs first, so an email is hidden whole rather than name by name
+  for (const re of PRIVATE_PATTERNS) out = out.replace(re, swap);
+  for (const v of values) if (v && out.toLowerCase().includes(v.toLowerCase())) out = out.replace(new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), swap);
+  return { text: out, values: found };
+}
+
+/** Puts the details back; null if the translation lost a placeholder (then use the English). */
+export function unmaskPrivate(translation: string, values: Array<[string, string]>): string | null {
+  let out = translation;
+  for (const [slot, v] of values) {
+    if (!out.includes(slot)) return null;
+    out = out.split(slot).join(v);
+  }
+  return out;
+}
 
 /** Said when the AI service cannot be reached. */
 export const OFFLINE_REPLIES: Record<LanguageCode, string> = {

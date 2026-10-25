@@ -9,6 +9,7 @@ import { createAutofillRouter, autofillErrorHandler } from './server/autofill/ro
 import { createLearnRouter } from './server/learn/router';
 import { createTranslateRouter, createTranslator } from './server/i18n/router';
 import { createVoiceRouter } from './server/voice/router';
+import { createLoansRouter } from './server/loans/router';
 import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
 import { detectIntentLocal } from './server/autofill/schemes';
@@ -131,6 +132,7 @@ async function generateWithFallback(
 // Smart Apply & Autofill (document intelligence, unified profile, form filling)
 app.use('/api/autofill', createAutofillRouter(generateWithFallback));
 app.use('/api/learn', createLearnRouter(generateWithFallback));
+app.use('/api/loans', createLoansRouter(generateWithFallback));
 const translate = createTranslator(generateWithFallback);
 app.use('/api/i18n', createTranslateRouter(translate));
 // The helpline on a real phone line (Twilio)
@@ -160,7 +162,7 @@ app.post('/api/ai/chat', async (req, res) => {
     ? `\n7. The person wants to apply${applyIntent.schemeId ? ` for ${FORM_SCHEMA_MAP[applyIntent.schemeId]?.formTitle.split(' — ')[0]}` : ''}. In one short sentence, ${
         !applyIntent.schemeId
           ? localIntent.wantsLoan
-            ? 'ask what the loan is for (business, farming or dairy, studies, a house, a self-help group, or quick money against gold) and how much they need, then name the one or two best-fitting loans from the loan list — cheaper government loan schemes first. Say UDAAN ONE can fill the loan application and compare banks.'
+            ? 'act as a loan advisor: ask ONE follow-up question at a time until you know what the loan is for (business, farming or dairy, studies, a house, a self-help group, or quick money against gold), roughly how much, whether the business is new or running, and their category (SC, ST, OBC, minority or general) — never ask for scheme names. Then name the single best-fitting loan from the loan list and say why in a few words (for example lowest cost, no collateral, made for their group), cheaper government loan schemes first. If they say their monthly income, check the EMI: it should stay under 40% of income including EMIs they already pay — say plainly whether it fits or is too heavy. Say UDAAN ONE can fill the application by voice and find the nearest bank.'
             : 'ask which scheme, loan or document they want to apply for.'
           : /helpline|ivr|phone/i.test(String(channel))
             ? 'say you will now take their application details in this call, one question at a time.'
@@ -204,7 +206,7 @@ RULES:
      • PM Vishwakarma: for artisans in notified traditional trades — recognition, basic training with stipend, toolkit incentive and collateral-free credit at concessional interest; register through a CSC (pmvishwakarma.gov.in).
      • Stand-Up India: bank loans of ₹10 lakh to ₹1 crore for SC/ST and women entrepreneurs starting a new enterprise (the original scheme closed to new loans on 31 March 2025; a revamped version was announced in 2026 — tell people to confirm current terms at their bank).
      • Common documents: Aadhaar, caste certificate, income certificate, bank passbook, photograph.
-     • LOANS — UDAAN ONE has a Loans page that compares government loan schemes, banks, NBFCs and microfinance lenders, and its Smart Apply fills the loan application and makes a PDF that names the loan and the lender. Always suggest the cheapest suitable government-backed loan before a costly private loan, never promise approval or a rate (rates are indicative, checked October 2026; the lender decides), warn against unregistered loan apps, and say total EMIs should stay well under half of monthly income. Loans it knows:
+     • LOANS — UDAAN ONE has a Loans page that compares government loan schemes, banks, NBFCs and microfinance lenders, and its Smart Apply fills the loan application and makes a PDF that names the loan and the lender. Always suggest the cheapest suitable government-backed loan before a costly private loan, never promise approval or a rate (rates are indicative, checked October 2026; the lender decides), warn against unregistered loan apps, and say total EMIs should stay well under half of monthly income. Government loan schemes never use paid agents and never ask for fees before the loan — if someone does, tell the person it is a scam and to call 1930. The Loans page also has: a loan advisor that ranks loans for the person, an affordability check, a business plan builder, a plain-language check of loan papers before signing, a fraud shield, and a nearest-bank finder with the documents to carry. Loans it knows:
 ${LOAN_FACTS}
      • Official documents and certificates (UDAAN ONE's Smart Apply can prepare these and tell people which proofs are accepted): PAN — instant e-PAN with Aadhaar on incometax.gov.in, or Form 49A via Protean / UTIITSL (Aadhaar alone can serve as proof of identity, address and date of birth); voter ID — Form 6 on voters.eci.gov.in, needing proof of age, proof of address and a photo (Form 8 for corrections); passport — apply on passportindia.gov.in then attend a Passport Seva Kendra with proof of present address and proof of date of birth; Aadhaar address update — myaadhaar.uidai.gov.in, other updates at an Aadhaar centre; income, caste and residence certificates — State e-District portal, a CSC or the Tahsildar office; birth certificate — local Registrar or crsorgi.gov.in; learner's driving licence — sarathi.parivahan.gov.in; e-Shram card — eshram.gov.in; UDID disability card — swavlambancard.gov.in; ration card — the State food department (links on nfsa.gov.in). Fees, timelines and accepted documents are set by the issuing authority — tell people to confirm on the official portal.
    - For local offices, name the type of office (District Social Welfare Office, State SC Development Corporation, nearest Skill India centre, CSC) rather than inventing addresses or phone numbers. The UDAAN ONE helpline is 1800-11-2529.

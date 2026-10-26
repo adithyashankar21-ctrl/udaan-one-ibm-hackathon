@@ -72,6 +72,8 @@ const DIGIT_WORDS: string[][] = [
   ['nine', 'nau', 'नौ', 'नऊ', 'ஒன்பது', 'తొమ్మిది', 'ಒಂಬತ್ತು', 'ഒമ്പത്', 'নয়', 'নয়', 'નવ', 'ਨੌਂ', 'ਨੌ', 'ନଅ', 'نو'],
 ];
 const DIGIT_OF = new Map<string, string>(DIGIT_WORDS.flatMap((words, d) => words.map((w) => [w, String(d)] as [string, string])));
+/** The digit (as text) a spoken digit word stands for in any supported language, or undefined. */
+export const digitOfWord = (w: string) => DIGIT_OF.get(w);
 const REPEAT: Record<string, number> = { double: 2, triple: 3, dabal: 2, डबल: 2, ट्रिपल: 3 };
 
 /**

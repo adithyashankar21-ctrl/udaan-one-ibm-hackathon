@@ -3,7 +3,7 @@
  * These checks only test the shape of a value — they cannot confirm it is genuine.
  */
 import type { FieldType } from '../../src/data/autofillSchema';
-import { spokenDigits, toAsciiDigits } from '../../src/data/languageTools';
+import { digitOfWord, spokenDigits, toAsciiDigits } from '../../src/data/languageTools';
 
 /* Verhoeff checksum used by Aadhaar numbers */
 const D = [
@@ -57,6 +57,24 @@ const HINDI_MONTHS: Array<[RegExp, string]> = [
   [/जुलाई/, 'jul'], [/अगस्त/, 'aug'], [/सितंबर|सितम्बर/, 'sep'], [/अक्टूबर|अक्तूबर/, 'oct'], [/नवंबर|नवम्बर/, 'nov'], [/दिसंबर|दिसम्बर/, 'dec'],
 ];
 
+/** Month names in the other supported languages as speech recognition writes them (Jan to Dec). */
+const MONTH_NAMES: string[][] = [
+  ['जानेवारी', 'ஜனவரி', 'జనవరి', 'ಜನವರಿ', 'ജനുവരി', 'জানুয়ারি', 'જાન્યુઆરી', 'ਜਨਵਰੀ', 'ଜାନୁଆରୀ', 'جنوری'],
+  ['फेब्रुवारी', 'பிப்ரவரி', 'ఫిబ్రవరి', 'ಫೆಬ್ರವರಿ', 'ഫെബ്രുവരി', 'ফেব্রুয়ারি', 'ફેબ્રુઆરી', 'ਫ਼ਰਵਰੀ', 'ਫਰਵਰੀ', 'ଫେବୃଆରୀ', 'فروری'],
+  ['மார்ச்', 'మార్చి', 'ಮಾರ್ಚ್', 'മാർച്ച്', 'মার্চ', 'માર્ચ', 'ਮਾਰਚ', 'ମାର୍ଚ୍ଚ', 'مارچ'],
+  ['एप्रिल', 'ஏப்ரல்', 'ఏప్రిల్', 'ಏಪ್ರಿಲ್', 'ഏപ്രിൽ', 'এপ্রিল', 'એપ્રિલ', 'ਅਪ੍ਰੈਲ', 'ਅਪਰੈਲ', 'ଏପ୍ରିଲ', 'اپریل'],
+  ['மே', 'మే', 'ಮೇ', 'മേയ്', 'মে', 'મે', 'ਮਈ', 'ମଇ', 'مئی'],
+  ['ஜூன்', 'జూన్', 'ಜೂನ್', 'ജൂൺ', 'জুন', 'જૂન', 'ਜੂਨ', 'ଜୁନ', 'جون'],
+  ['जुलै', 'ஜூலை', 'జూలై', 'ಜುಲೈ', 'ജൂലൈ', 'জুলাই', 'જુલાઈ', 'ਜੁਲਾਈ', 'ଜୁଲାଇ', 'جولائی'],
+  ['ऑगस्ट', 'ஆகஸ்ட்', 'ఆగస్టు', 'ಆಗಸ್ಟ್', 'ഓഗസ്റ്റ്', 'আগস্ট', 'ઓગસ્ટ', 'ਅਗਸਤ', 'ଅଗଷ୍ଟ', 'اگست'],
+  ['सप्टेंबर', 'செப்டம்பர்', 'సెప్టెంబర్', 'ಸೆಪ್ಟೆಂಬರ್', 'സെപ്റ്റംബർ', 'সেপ্টেম্বর', 'સપ્ટેમ્બર', 'ਸਤੰਬਰ', 'ସେପ୍ଟେମ୍ବର', 'ستمبر'],
+  ['ऑक्टोबर', 'அக்டோபர்', 'అక్టోబర్', 'ಅಕ್ಟೋಬರ್', 'ഒക്ടോബർ', 'অক্টোবর', 'ઓક્ટોબર', 'ਅਕਤੂਬਰ', 'ଅକ୍ଟୋବର', 'اکتوبر'],
+  ['नोव्हेंबर', 'நவம்பர்', 'నవంబర్', 'ನವೆಂಬರ್', 'നവംബർ', 'নভেম্বর', 'નવેમ્બર', 'ਨਵੰਬਰ', 'ନଭେମ୍ବର', 'نومبر'],
+  ['डिसेंबर', 'டிசம்பர்', 'డిసెంబర్', 'ಡಿಸೆಂಬರ್', 'ഡിസംബർ', 'ডিসেম্বর', 'ડિસેમ્બર', 'ਦਸੰਬਰ', 'ଡିସେମ୍ବର', 'دسمبر'],
+];
+const MONTH_KEYS = Object.keys(MONTHS);
+const OTHER_MONTHS: Array<[RegExp, string]> = MONTH_NAMES.flatMap((names, i) => [...names].sort((a, b) => b.length - a.length).map((n) => [new RegExp(n), MONTH_KEYS[i]] as [RegExp, string]));
+
 const NUMBER_WORDS: Record<string, number> = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
@@ -65,19 +83,25 @@ const NUMBER_WORDS: Record<string, number> = {
   एक: 1, दो: 2, तीन: 3, चार: 4, पांच: 5, पाँच: 5, छह: 6, छः: 6, सात: 7, आठ: 8, नौ: 9, दस: 10, बीस: 20, सौ: 100,
 };
 
+/** "Ten" in the other supported languages (the digit words in languageTools cover 0-9). */
+const TEN_WORDS = new Set(['दहा', 'பத்து', 'పది', 'ಹತ್ತು', 'പത്ത്', 'দশ', 'દસ', 'ਦਸ', 'ଦଶ', 'دس']);
+
 /**
  * Speech-friendly clean-up before parsing: Indian-script digits to 0-9, Hindi month names to
  * English, and a lone number word ("five", "paanch", "पांच") to its digits.
  */
-export function spokenToPlain(raw: string, numberWords = false): string {
+export function spokenToPlain(raw: string, numberWords = false, monthWords = false): string {
   let s = toAsciiDigits(raw);
   for (const [re, m] of HINDI_MONTHS) s = s.replace(re, m);
+  // A month word in any other language; spaces keep it apart from the day and year
+  if (monthWords) for (const [re, m] of OTHER_MONTHS) if (re.test(s)) { s = s.replace(re, ` ${m} `); break; }
   if (numberWords && !/\d/.test(s)) {
     const words = s.toLowerCase().replace(/[.,!?।]/g, ' ').split(/[\s-]+/).filter(Boolean);
     let total = 0;
     let found = false;
     for (const w of words) {
-      const n = NUMBER_WORDS[w];
+      const d = digitOfWord(w);
+      const n = NUMBER_WORDS[w] ?? (d !== undefined ? Number(d) : TEN_WORDS.has(w) ? 10 : undefined);
       if (n === undefined) continue;
       found = true;
       total = n === 100 ? Math.max(1, total) * 100 : total + n;
@@ -130,14 +154,14 @@ export function normaliseMoney(raw: string): string | null {
   const num = s.match(/(\d+(?:\.\d+)?)/);
   if (!num) return null;
   let n = Number(num[1]);
-  if (/lakh|lac|लाख|ലക്ഷ|லட்ச|లక్ష|ಲಕ್ಷ/.test(s)) n *= 100000;
-  else if (/crore|करोड़|cr\b/.test(s)) n *= 10000000;
-  else if (/thousand|hazar|हज़ार|हजार|\bk\b/.test(s)) n *= 1000;
+  if (/lakh|lac|लाख|ലക്ഷ|லட்ச|లక్ష|ಲಕ್ಷ|লাখ|লক্ষ|લાખ|ਲੱਖ|ଲକ୍ଷ|لاکھ/.test(s)) n *= 100000;
+  else if (/crore|करोड|कोटी|கோடி|కోటి|ಕೋಟಿ|കോടി|কোটি|કરોડ|ਕਰੋੜ|କୋଟି|کروڑ|cr\b/.test(s)) n *= 10000000;
+  else if (/thousand|hazar|हज़ार|हजार|ஆயிரம்|వేయి|వెయ్యి|ಸಾವಿರ|ആയിരം|হাজার|હજાર|ਹਜ਼ਾਰ|ਹਜਾਰ|ହଜାର|ہزار|\bk\b/.test(s)) n *= 1000;
   if (!isFinite(n) || n < 0) return null;
   return String(Math.round(n));
 }
 
-export const isNone = (raw: string) => /^(none|no|nil|na|n\/a|not applicable|nahi|nahin|नहीं|नही|இல்லை|లేదు|ಇಲ್ಲ|ഇല്ല)\.?$/i.test(raw.trim());
+export const isNone = (raw: string) => /^(none|no|nil|na|n\/a|not applicable|nahi|nahin|नहीं|नही|नाही|ना|இல்லை|లేదు|ಇಲ್ಲ|ഇല്ല|না|নেই|નથી|ના|નહીં|ਨਹੀਂ|ਨਾ|ନା|ନାହିଁ|نہیں|نا)[.।۔]?$/i.test(raw.trim());
 
 export interface Normalised {
   ok: boolean;
@@ -153,7 +177,7 @@ export interface Normalised {
  * valid value — the caller may then ask Gemini to interpret free speech.
  */
 export function normalise(type: FieldType, raw: string, options?: string[]): Normalised {
-  let text = spokenToPlain(String(raw ?? '').trim(), type === 'number' || type === 'money').trim();
+  let text = spokenToPlain(String(raw ?? '').trim(), type === 'number' || type === 'money', type === 'date').trim();
   // Numbers said digit by digit ("nine eight seven…") for digit-string fields
   if (type === 'mobile' || type === 'pincode' || type === 'aadhaar' || type === 'account') text = spokenDigits(text) ?? text;
   if (!text) return { ok: false, error: 'Empty answer' };

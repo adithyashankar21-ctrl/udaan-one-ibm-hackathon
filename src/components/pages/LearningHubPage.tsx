@@ -293,16 +293,24 @@ const Curriculum: React.FC<{
     if (selected) setOpen((o) => ({ ...o, [selected.module.id]: true }));
   }, [selected?.module.id]);
   return (
-    <nav aria-label={`${course.title} curriculum`} className="space-y-2">
+    <nav aria-label={`${course.title} curriculum`} className="flex flex-col">
       {course.modules.map((mod, mi) => {
         const isOpen = !!open[mod.id];
         const doneHere = mod.subtopics.filter((s) => progress.has(subtopicKey(course.id, mod.id, s))).length;
+        const finished = doneHere === mod.subtopics.length;
+        const here = selected?.module.id === mod.id;
+        const last = mi === course.modules.length - 1;
         return (
-          <div key={mod.id} className="overflow-hidden rounded-2xl border border-line bg-white">
-            <button onClick={() => setOpen((o) => ({ ...o, [mod.id]: !isOpen }))} aria-expanded={isOpen} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ivory">
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs font-bold ${doneHere === mod.subtopics.length ? 'bg-green text-white' : 'bg-navy-50 text-navy'}`}>
-                {doneHere === mod.subtopics.length ? <CheckCircle2 className="h-4 w-4" aria-hidden /> : mi + 1}
+          <div key={mod.id} className="flex gap-3">
+            {/* Path map: a rail of checkpoints, teal when done, violet where you are */}
+            <div className="flex w-9 shrink-0 flex-col items-center" aria-hidden>
+              <span className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold transition-all duration-200 ${finished ? 'bg-teal-600 text-white' : here ? 'bg-violet text-white shadow-[0_0_0_5px_rgb(108_92_231/0.22)]' : 'bg-white text-muted shadow-[inset_0_0_0_2px_var(--color-line)]'}`}>
+                {finished ? <CheckCircle2 className="h-4 w-4" /> : mi + 1}
               </span>
+              {!last && <span className={`my-1 w-0.5 flex-1 rounded-full ${finished ? 'bg-teal-600/60' : 'bg-line'}`} />}
+            </div>
+          <div className="mb-3 min-w-0 flex-1 self-start overflow-hidden rounded-2xl border border-line bg-white">
+            <button onClick={() => setOpen((o) => ({ ...o, [mod.id]: !isOpen }))} aria-expanded={isOpen} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ivory">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-bold text-navy">{mod.title}</span>
                 <span className="text-xs text-muted">
@@ -334,6 +342,7 @@ const Curriculum: React.FC<{
                 </motion.ul>
               )}
             </AnimatePresence>
+          </div>
           </div>
         );
       })}

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Certificate } from '../../services/learnApi';
 import { pdfTitle, printElement } from '../../services/printDocument';
+import { UdaanOneLogo } from '../shell/SiteHeader';
 
 /** The UDAAN ONE certificate of completion itself, and how it prints (one A4 landscape page). */
 
@@ -10,27 +11,26 @@ export const verifyLink = (id: string) => `${window.location.origin}/?verify=${i
 /* ── The certificate ───────────────────────────────────────────────── */
 
 /** A small L-shaped ornament for each corner of the frame. */
-const Corner: React.FC<{ at: string }> = ({ at }) => <span aria-hidden className={`pointer-events-none absolute h-7 w-7 border-saffron ${at}`} />;
+const Corner: React.FC<{ at: string }> = ({ at }) => <span aria-hidden className={`pointer-events-none absolute h-7 w-7 border-gold ${at}`} />;
 
 export const CertificateCard: React.FC<{ cert: Certificate; officialRoute?: { label: string; url: string } }> = ({ cert, officialRoute }) => (
-  <article className="print-certificate relative mx-auto w-full max-w-3xl overflow-hidden rounded-[22px] border-[6px] border-double border-saffron/70 bg-[#fffdf7] p-6 text-center text-navy shadow-card sm:p-10" aria-label="Certificate">
-    <div className="pointer-events-none absolute inset-3 rounded-[14px] border border-saffron/30" aria-hidden />
+  <article className="print-certificate relative mx-auto w-full max-w-3xl overflow-hidden rounded-[22px] border-[6px] border-double border-gold bg-[#fffdf7] p-6 text-center text-navy shadow-card sm:p-10" aria-label="Certificate">
+    <div className="pointer-events-none absolute inset-3 rounded-[14px] border border-gold/50" aria-hidden />
+    <span className="cert-shine pointer-events-none absolute inset-0" aria-hidden />
     <Corner at="left-5 top-5 border-l-2 border-t-2 rounded-tl-lg" />
     <Corner at="right-5 top-5 border-r-2 border-t-2 rounded-tr-lg" />
     <Corner at="bottom-5 left-5 border-b-2 border-l-2 rounded-bl-lg" />
     <Corner at="bottom-5 right-5 border-b-2 border-r-2 rounded-br-lg" />
     <div className="relative">
       <div className="flex items-center justify-center gap-3">
-        <span className="cert-logo grid h-12 w-12 place-items-center rounded-2xl bg-navy text-lg font-extrabold text-white" aria-hidden>
-          U1
-        </span>
+        <UdaanOneLogo className="cert-logo h-12 w-12" />
         <div className="text-left">
           <p className="cert-brand text-lg font-extrabold tracking-wide">UDAAN ONE</p>
           <p className="text-[11px] text-muted">Learning Hub</p>
         </div>
       </div>
-      <p className="cert-title mt-6 font-serif text-2xl font-bold tracking-wide text-saffron-600 sm:text-3xl">Certificate of Completion</p>
-      <div className="mx-auto mt-2 h-px w-24 bg-saffron/60" aria-hidden />
+      <p className="cert-title mt-6 font-serif text-2xl font-bold tracking-wide text-gold-600 sm:text-3xl">Certificate of Completion</p>
+      <div className="mx-auto mt-2 h-px w-24 bg-gold" aria-hidden />
       <p className="cert-small mt-5 text-sm text-muted">This is to certify that</p>
       <p translate="no" className="cert-name mt-2 font-serif text-3xl font-bold sm:text-4xl">
         {cert.name}
@@ -51,7 +51,7 @@ export const CertificateCard: React.FC<{ cert: Certificate; officialRoute?: { la
           <p className="mt-1 text-[11px] uppercase tracking-wider text-muted">Date of issue</p>
         </div>
         <div className="flex justify-center" aria-hidden>
-          <span className="cert-seal grid h-20 w-20 place-items-center rounded-full border-[3px] border-double border-saffron bg-saffron-50 text-center leading-tight text-saffron-600">
+          <span className="cert-seal grid h-20 w-20 place-items-center rounded-full border-[3px] border-double border-gold bg-gold-50 text-center leading-tight text-gold-600">
             <span>
               <span className="block text-[18px] font-extrabold">U1</span>
               <span className="block text-[8px] font-bold uppercase tracking-wider">Verified</span>
@@ -92,6 +92,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .print-certificate .cert-small { font-size: 13px; }
 .print-certificate .cert-meta { font-size: 15px; }
 .print-certificate .cert-seal { width: 92px; height: 92px; }
+.print-certificate .cert-shine { display: none; }
 `;
 
 /** Prints just this certificate, on one A4 landscape page. */

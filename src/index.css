@@ -235,6 +235,10 @@ main[data-section="documents"] { --sec: var(--color-gold-600); --sec-glow: rgb(2
 }
 
 
+/* Certificate: a soft gold shine that sweeps across once (hidden when printed) */
+.cert-shine { background: linear-gradient(115deg, transparent 35%, rgb(255 200 87 / 0.22) 46%, rgb(255 255 255 / 0.5) 50%, transparent 62%); background-size: 250% 100%; background-position: 120% 0; animation: cert-sweep 2.2s var(--ease-out-soft) 0.4s 1 forwards; }
+@keyframes cert-sweep { to { background-position: -20% 0; } }
+
 /* One line-icon set (lucide) at one stroke weight everywhere */
 svg.lucide { stroke-width: 1.75; }
 

@@ -9,69 +9,76 @@ interface VoiceOrbProps {
   label: string;
 }
 
-const STATE_GLOW: Record<VoiceState, string> = {
-  idle: 'from-saffron/70 via-ivory to-teal/60',
-  listening: 'from-saffron via-saffron/60 to-teal/70',
-  processing: 'from-navy-700 via-saffron/50 to-teal/60',
-  speaking: 'from-teal via-teal/60 to-saffron/70',
-  paused: 'from-slate-300 via-ivory to-slate-300',
+/** Glow colour per state: saffron while it is your turn, teal while it answers (verified/calm). */
+const GLOW: Record<VoiceState, string> = {
+  idle: 'bg-saffron/35',
+  listening: 'bg-saffron/55',
+  processing: 'bg-navy-700/30',
+  speaking: 'bg-teal/45',
+  paused: 'bg-navy/15',
 };
 
-/** The UDAAN ONE voice orb: a layered, softly lit sphere that reflects the assistant's state. */
+const CORE: Record<VoiceState, string> = {
+  idle: 'from-[#ffb366] to-saffron',
+  listening: 'from-[#ffb366] to-saffron',
+  processing: 'from-[#ffb366] to-saffron',
+  speaking: 'from-[#7ff0df] to-teal',
+  paused: 'from-slate-200 to-slate-300',
+};
+
+/**
+ * The UDAAN ONE voice button: a raised, softly glowing disc. Idle breathes slowly;
+ * listening pulses with expanding rings and a live waveform.
+ */
 export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, onClick, size = 'lg', label }) => {
-  const dim = size === 'lg' ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-36 h-36';
+  const dim = size === 'lg' ? 'h-64 w-64 sm:h-72 sm:w-72' : 'h-48 w-48';
   const active = state === 'listening' || state === 'speaking';
+  const ring = state === 'speaking' ? 'border-teal/50' : 'border-saffron/60';
 
   return (
     <div className={`relative ${dim} flex items-center justify-center`}>
-      {/* Ambient halo */}
-      <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${STATE_GLOW[state]} blur-2xl opacity-60`} aria-hidden />
+      {/* Soft glow */}
+      <div className={`absolute inset-6 rounded-full ${GLOW[state]} blur-3xl transition-colors duration-300`} aria-hidden />
       {/* Expanding rings while listening / speaking */}
       {active && (
         <>
-          <span className="absolute inset-4 rounded-full border-2 border-saffron/50 animate-ring" aria-hidden />
-          <span className="absolute inset-4 rounded-full border-2 border-teal/40 animate-ring [animation-delay:1.2s]" aria-hidden />
+          <span className={`absolute inset-10 rounded-full border ${ring} animate-ring`} aria-hidden />
+          <span className={`absolute inset-10 rounded-full border ${ring} animate-ring [animation-delay:0.8s]`} aria-hidden />
+          <span className={`absolute inset-10 rounded-full border ${ring} animate-ring [animation-delay:1.6s]`} aria-hidden />
         </>
       )}
+      {/* Static halo ring */}
+      <span className="absolute inset-8 rounded-full border border-white/20" aria-hidden />
 
       <button
         type="button"
         onClick={onClick}
         aria-label={label}
         aria-pressed={state !== 'idle'}
-        className={`relative w-[78%] h-[78%] rounded-full overflow-hidden shadow-lift ring-1 ring-white/60 transition-transform duration-300 hover:scale-[1.02] focus-visible:outline-offset-4 ${
+        className={`relative flex h-[56%] w-[56%] items-center justify-center rounded-full bg-gradient-to-b ${CORE[state]} text-navy shadow-[0_0_0_1px_rgb(255_255_255/0.35)_inset,0_-6px_12px_rgb(255_255_255/0.35)_inset,0_16px_32px_-8px_rgb(255_153_51/0.6),0_32px_56px_-16px_rgb(0_0_0/0.45)] transition-transform duration-200 ease-out hover:scale-[1.04] active:scale-95 focus-visible:outline-offset-8 ${
           state === 'listening' ? 'animate-orb-listen' : 'animate-orb-breathe'
         }`}
       >
-        {/* Layered sphere */}
-        <span className={`absolute inset-0 bg-gradient-to-br ${STATE_GLOW[state]}`} aria-hidden />
-        <span className="absolute -top-1/4 -left-1/4 w-3/4 h-3/4 rounded-full bg-white/70 blur-2xl" aria-hidden />
-        <span className="absolute -bottom-1/4 -right-1/4 w-3/4 h-3/4 rounded-full bg-teal/35 blur-2xl" aria-hidden />
-        <span className="absolute inset-0 rounded-full ring-8 ring-inset ring-white/25" aria-hidden />
-
-        <span className="relative flex h-full w-full flex-col items-center justify-center gap-2 text-navy">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/85 shadow-card backdrop-blur-sm">
-            {state === 'processing' ? (
-              <Loader2 className="h-7 w-7 animate-spin text-navy" />
-            ) : state === 'speaking' ? (
-              <Volume2 className="h-7 w-7 text-teal-600" />
-            ) : state === 'paused' ? (
-              <Pause className="h-7 w-7 text-navy" />
-            ) : state === 'listening' ? (
-              <Square className="h-6 w-6 fill-saffron text-saffron" />
-            ) : (
-              <Mic className="h-7 w-7 text-navy" />
-            )}
-          </span>
-          {(state === 'listening' || state === 'speaking') && (
-            <span className={`flex h-7 items-center gap-1 ${state === 'listening' ? 'text-saffron-600' : 'text-teal-600'}`} aria-hidden>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <span key={i} className="wave-bar" style={{ animationDelay: `${i * 0.12}s` }} />
-              ))}
-            </span>
-          )}
-        </span>
+        {state === 'processing' ? (
+          <Loader2 className="h-10 w-10 animate-spin" strokeWidth={1.75} />
+        ) : state === 'speaking' ? (
+          <Volume2 className="h-10 w-10" strokeWidth={1.75} />
+        ) : state === 'paused' ? (
+          <Pause className="h-10 w-10" strokeWidth={1.75} />
+        ) : state === 'listening' ? (
+          <Square className="h-9 w-9 fill-navy" strokeWidth={1.75} />
+        ) : (
+          <Mic className="h-10 w-10" strokeWidth={1.75} />
+        )}
       </button>
+
+      {(state === 'listening' || state === 'speaking') && (
+        <span className="absolute bottom-3 flex h-7 items-center gap-1 text-white/80" aria-hidden>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} className="wave-bar" style={{ animationDelay: `${i * 0.12}s` }} />
+          ))}
+        </span>
+      )}
     </div>
   );
 };

@@ -70,18 +70,12 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
-/** Brand mark: two rising chevrons — "udaan" (flight) — on midnight navy. */
+/** Brand mark: a "U" whose right arm lifts into a wing — "udaan" (flight). */
 export const UdaanOneLogo: React.FC<{ className?: string }> = ({ className = 'w-10 h-10' }) => (
   <svg viewBox="0 0 40 40" className={className} aria-hidden>
-    <defs>
-      <linearGradient id="udaan-bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#172844" />
-        <stop offset="1" stopColor="#101A2C" />
-      </linearGradient>
-    </defs>
-    <rect width="40" height="40" rx="11" fill="url(#udaan-bg)" />
-    <path d="M10.5 24.5 20 13.5l9.5 11" fill="none" stroke="#F4A340" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M15 29.5 20 23.8l5 5.7" fill="none" stroke="#20B8A7" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
+    <rect width="40" height="40" rx="12" fill="#0A1330" />
+    <path d="M11.5 11v11a8.5 8.5 0 0 0 17 0V11" fill="none" stroke="#FF9933" strokeWidth="3.2" strokeLinecap="round" />
+    <path d="M28.5 11c1.8-3 4.4-4.5 7.5-4.7M28.5 16c1.4-2 3.2-3.1 5.4-3.4" fill="none" stroke="#2DD4BF" strokeWidth="2.4" strokeLinecap="round" />
   </svg>
 );
 
@@ -147,15 +141,15 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
   };
 
   const navBtn = (active: boolean) =>
-    `relative inline-flex h-10 items-center whitespace-nowrap rounded-xl px-2.5 text-sm font-semibold transition-colors xl:px-3 ${
-      active ? 'text-navy after:absolute after:inset-x-3 after:-bottom-[13px] after:h-[2px] after:rounded-full after:bg-saffron' : 'text-muted hover:text-navy hover:bg-ivory-200/70'
+    `relative inline-flex h-11 items-center whitespace-nowrap rounded-full px-3 text-sm font-semibold transition-colors duration-200 xl:px-4 ${
+      active ? 'text-navy after:absolute after:inset-x-4 after:-bottom-[10px] after:h-[2px] after:rounded-full after:bg-saffron' : 'text-muted hover:text-navy hover:bg-navy/[0.05]'
     }`;
 
-  const iconBtn = 'flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-white text-navy transition-colors hover:border-navy-700/40';
+  const iconBtn = 'flex h-11 w-11 items-center justify-center rounded-full border border-navy/10 bg-white text-navy transition-colors duration-200 hover:border-navy/30';
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-line/80 bg-ivory/85 backdrop-blur-md supports-[backdrop-filter]:bg-ivory/75">
+      <header className="sticky top-0 z-40 border-b border-navy/[0.06] glass">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-navy focus:px-3 focus:py-2 focus:text-white">
           Skip to content
         </a>
@@ -164,10 +158,10 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
           <button onClick={() => go('home')} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl text-left" aria-label="UDAAN ONE home">
             <UdaanOneLogo className="h-10 w-10 shrink-0" />
             <span className="min-w-0 leading-tight">
-              <span className="block text-[17px] font-extrabold tracking-[-0.01em] text-navy">
+              <span className="block font-display text-[17px] font-semibold tracking-[-0.02em] text-navy">
                 UDAAN <span className="text-teal-600">ONE</span>
               </span>
-              <span className="hidden truncate whitespace-nowrap text-[11px] font-medium text-muted sm:block">AI for Opportunity. Technology for All.</span>
+              <span className="hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
             </span>
           </button>
 
@@ -181,7 +175,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
           </nav>
 
           <div className="flex items-center gap-1.5">
-            <button onClick={() => go('voice_studio')} className={`btn btn-sm hidden xl:inline-flex ${current === 'voice_studio' ? 'btn-primary' : 'btn-accent'}`}>
+            <button onClick={() => go('voice_studio')} className={`btn btn-sm btn-primary hidden xl:inline-flex`}>
               <Mic className="h-4 w-4" aria-hidden /> {t.nav.assistant}
             </button>
 
@@ -189,7 +183,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
             <div className="relative" ref={langRef}>
               <button
                 onClick={() => setLangOpen((o) => !o)}
-                className="flex h-10 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-sm font-semibold text-navy transition-colors hover:border-navy-700/40"
+                className="flex h-11 items-center gap-1.5 rounded-full border border-navy/10 bg-white px-3 text-sm font-semibold text-navy transition-colors duration-200 hover:border-navy/30"
                 aria-expanded={langOpen}
                 aria-haspopup="listbox"
                 aria-label={`${t.language}: ${activeLang.name}`}
@@ -241,7 +235,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
                           role="radio"
                           aria-checked={textSize === size}
                           onClick={() => setTextSize(size)}
-                          className={`h-10 rounded-xl border font-bold transition-colors ${textSize === size ? 'border-navy bg-navy text-white' : 'border-line text-navy hover:bg-ivory'}`}
+                          className={`h-11 rounded-full border font-bold transition-colors ${textSize === size ? 'border-navy bg-navy text-white' : 'border-line text-navy hover:bg-ivory'}`}
                           style={{ fontSize: `${14 + i * 3}px` }}
                         >
                           A
@@ -306,7 +300,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
             </div>
 
             {/* Profile */}
-            <button onClick={onOpenProfile} className="hidden h-10 items-center gap-2 rounded-xl bg-navy px-1.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800 sm:flex 2xl:pr-3" aria-label={profileName ? `${t.profile}: ${profileName}` : t.signIn}>
+            <button onClick={onOpenProfile} className="hidden h-11 items-center gap-2 rounded-full bg-navy px-1.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800 sm:flex 2xl:pr-3" aria-label={profileName ? `${t.profile}: ${profileName}` : t.signIn}>
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">
                 <User className="h-4 w-4" aria-hidden />
               </span>

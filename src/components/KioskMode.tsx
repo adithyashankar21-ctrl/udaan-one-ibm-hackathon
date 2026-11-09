@@ -13,11 +13,32 @@ import {
   Wrench, 
   Layers, 
   Smartphone,
-  ChevronRight
+  ChevronRight,
+  Sun,
+  Palette,
+  Store,
+  Factory,
+  Milk,
+  Footprints,
+  Laptop,
+  Bike,
+  Handshake,
+  Hammer,
+  Scissors
 } from 'lucide-react';
 import { BeneficiaryProfile, LanguageCode, LivelihoodAnalysis } from '../types';
 import { SUPPORTED_LANGUAGES, UI_TRANSLATIONS } from '../data/languages';
 import { aiService } from '../services/aiService';
+
+/** The data files use emoji keys; the screen shows one consistent line-icon set instead. */
+const LINE_ICON: Record<string, React.ElementType> = {
+  '☀️': Sun, '🎨': Palette, '🏪': Store, '🏭': Factory, '🐄': Milk, '👞': Footprints,
+  '💻': Laptop, '🛵': Bike, '🤝': Handshake, '🧱': Hammer, '🧵': Scissors,
+};
+const LineIcon: React.FC<{ glyph: string; className?: string }> = ({ glyph, className }) => {
+  const I = LINE_ICON[glyph] || Sparkles;
+  return <I className={className} strokeWidth={1.75} aria-hidden />;
+};
 
 interface KioskModeProps {
   currentLanguage: LanguageCode;
@@ -334,7 +355,7 @@ export const KioskMode: React.FC<KioskModeProps> = ({
                     : 'border-slate-700/80 bg-slate-800/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
                 }`}
               >
-                <div className="text-3xl mb-2">{tr.icon}</div>
+                <div className="mb-2 text-amber-400"><LineIcon glyph={tr.icon} className="h-8 w-8" /></div>
                 <div>
                   <h4 className="font-black text-sm md:text-base leading-tight text-white">{tr.title}</h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">{tr.sub}</p>
@@ -399,7 +420,7 @@ export const KioskMode: React.FC<KioskModeProps> = ({
                 }`}
               >
                 <div>
-                  <span className="text-4xl mb-3 block">{pref.icon}</span>
+                  <span className="mb-3 block text-amber-400"><LineIcon glyph={pref.icon} className="h-10 w-10" /></span>
                   <h4 className="text-lg font-black text-white">{pref.title}</h4>
                   <p className="text-xs text-slate-400 mt-1">{pref.sub}</p>
                   <div className="mt-4 p-3 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs text-amber-300 font-medium">

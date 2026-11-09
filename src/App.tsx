@@ -500,7 +500,7 @@ export default function App() {
         </div>
       )}
 
-      <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:pt-8 lg:pb-12">
+      <main id="main" data-section={({ schemes: 'schemes', loans: 'loans', skills: 'skills', learning: 'skills', enterprise: 'skills', documents: 'documents' } as Record<string, string>)[currentChannel]} className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:pt-8 lg:pb-12">
         {currentChannel === 'home' && (
           <HomePage
             language={currentLanguage}

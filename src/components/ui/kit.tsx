@@ -36,8 +36,8 @@ export const StatusPill: React.FC<{ tone?: Tone; icon?: React.ElementType; child
 }) => {
   const Icon = icon || TONE_ICON[tone];
   return (
-    <span title={title} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-5 ${TONE[tone]} ${className}`}>
-      <Icon className="h-3 w-3 shrink-0" aria-hidden />
+    <span title={title} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${TONE[tone]} ${className}`}>
+      <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
       {children}
     </span>
   );
@@ -62,7 +62,7 @@ export const Alert: React.FC<{ tone?: Exclude<Tone, 'accent'>; title?: string; c
   };
   const iconCls: Record<string, string> = { neutral: 'text-muted', info: 'text-teal-600', success: 'text-green', warning: 'text-saffron-600', danger: 'text-coral-600' };
   return (
-    <div role={tone === 'danger' ? 'alert' : 'status'} className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-start ${box[tone]} ${className}`}>
+    <div role={tone === 'danger' ? 'alert' : 'status'} className={`flex flex-col gap-4 rounded-3xl border p-5 sm:flex-row sm:items-start ${box[tone]} ${className}`}>
       <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconCls[tone]}`} aria-hidden />
       <div className="min-w-0 flex-1 text-sm text-navy">
         {title && <p className="font-bold">{title}</p>}
@@ -76,8 +76,8 @@ export const Alert: React.FC<{ tone?: Exclude<Tone, 'accent'>; title?: string; c
 /* ── Empty state ───────────────────────────────────────────────────── */
 
 export const EmptyState: React.FC<{ icon: React.ElementType; title: string; body?: string; action?: React.ReactNode; compact?: boolean }> = ({ icon: Icon, title, body, action, compact }) => (
-  <div className={`flex flex-col items-center rounded-2xl border border-dashed border-line bg-white/60 text-center ${compact ? 'p-6' : 'p-10'}`}>
-    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-navy-50 text-navy-700">
+  <div className={`flex flex-col items-center rounded-3xl border border-dashed border-navy/15 bg-white/60 text-center ${compact ? 'p-8' : 'p-12'}`}>
+    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-navy-50 text-navy-700">
       <Icon className="h-6 w-6" aria-hidden />
     </span>
     <p className="mt-4 font-bold text-navy">{title}</p>
@@ -91,7 +91,7 @@ export const EmptyState: React.FC<{ icon: React.ElementType; title: string; body
 export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => <span className={`skeleton block ${className}`} aria-hidden />;
 
 export const SkeletonCard: React.FC<{ lines?: number }> = ({ lines = 3 }) => (
-  <div className="card space-y-3 p-5" aria-busy="true" aria-label="Loading">
+  <div className="card space-y-4 p-6" aria-busy="true" aria-label="Loading">
     <Skeleton className="h-5 w-1/2" />
     {Array.from({ length: lines }).map((_, i) => (
       <Skeleton key={i} className={`h-3.5 ${i === lines - 1 ? 'w-2/3' : 'w-full'}`} />
@@ -118,10 +118,10 @@ export const SectionHeader: React.FC<{ eyebrow?: string; title: string; body?: s
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="max-w-2xl">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <H id={id} className={`${eyebrow ? 'mt-2' : ''} font-extrabold text-navy ${as === 'h1' ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-[1.75rem]'}`}>
+        <H id={id} className={`${eyebrow ? 'mt-2' : ''} font-semibold text-navy ${as === 'h1' ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-[1.75rem]'}`}>
           {title}
         </H>
-        {body && <p className="mt-2 text-base leading-relaxed text-muted">{body}</p>}
+        {body && <p className="mt-3 text-base leading-relaxed text-muted">{body}</p>}
       </div>
       {action}
     </div>
@@ -146,7 +146,7 @@ export const Dialog: React.FC<{ open: boolean; onClose: () => void; title: strin
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/50 p-0 backdrop-blur-md transition-opacity sm:items-center sm:p-4" onClick={onClose}>
       <div
         ref={ref}
         tabIndex={-1}
@@ -154,11 +154,11 @@ export const Dialog: React.FC<{ open: boolean; onClose: () => void; title: strin
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
-        className={`card max-h-[92vh] w-full overflow-y-auto rounded-b-none p-6 animate-fade-up sm:rounded-b-[var(--radius-card)] ${wide ? 'max-w-4xl' : 'max-w-md'}`}
+        className={`card max-h-[92vh] w-full overflow-y-auto rounded-b-none p-8 animate-fade-up sm:rounded-b-[var(--radius-card)] ${wide ? 'max-w-4xl' : 'max-w-md'}`}
       >
         <div className="flex items-start justify-between gap-4">
-          <h2 id={titleId} className="text-xl font-extrabold text-navy">{title}</h2>
-          <button onClick={onClose} className="btn btn-ghost btn-sm -mr-2 -mt-1 h-10 w-10 p-0" aria-label="Close">
+          <h2 id={titleId} className="text-xl font-semibold text-navy">{title}</h2>
+          <button onClick={onClose} className="btn btn-ghost btn-sm -mr-2 -mt-1 h-11 w-11 p-0" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -186,7 +186,7 @@ export const Stepper: React.FC<{ steps: Step[]; current: number; onSelect?: (i: 
         <>
           <span
             className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 text-sm font-bold transition-colors ${
-              state === 'current' ? 'border-navy bg-navy text-white' : state === 'done' ? 'border-green bg-green text-white' : 'border-line bg-white text-muted'
+              state === 'current' ? 'border-navy bg-navy text-white shadow-card' : state === 'done' ? 'border-green bg-green text-white' : 'border-navy/15 bg-white text-muted'
             }`}
           >
             {state === 'done' ? <Check className="h-4 w-4" aria-hidden /> : i + 1}
@@ -236,12 +236,12 @@ export const UploadZone: React.FC<{
         setOver(false);
         if (!disabled && e.dataTransfer.files.length) onFiles(Array.from(e.dataTransfer.files));
       }}
-      className={`relative rounded-2xl border-2 border-dashed p-6 text-center transition-colors sm:p-8 ${
-        over ? 'border-teal bg-teal-50' : 'border-[#d9dbe2] bg-white hover:border-navy-700/40'
+      className={`relative rounded-3xl border-2 border-dashed p-8 text-center transition-colors duration-200 sm:p-10 ${
+        over ? 'border-teal bg-teal-50' : 'border-navy/15 bg-white hover:border-navy/30'
       }`}
     >
-      <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-navy text-white">
-        <FileUp className="h-5 w-5" aria-hidden />
+      <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-navy text-white">
+        <FileUp className="h-6 w-6" aria-hidden />
       </span>
       <p className="mt-3 font-bold text-navy">{title}</p>
       {hint && <p className="mx-auto mt-1 max-w-md text-sm text-muted">{hint}</p>}

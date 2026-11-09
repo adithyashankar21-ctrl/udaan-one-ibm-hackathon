@@ -40,6 +40,14 @@ interface HomePageProps {
   onOpenDraft: (id: string) => void;
 }
 
+/** Each section keeps its own colour: Schemes saffron, Loans teal, Skills violet, Documents gold. */
+const HUE = {
+  saffron: { card: 'tint-saffron', icon: 'bg-saffron-50 text-saffron-600' },
+  teal: { card: 'tint-teal', icon: 'bg-teal-50 text-teal-600' },
+  violet: { card: 'tint-violet', icon: 'bg-violet-50 text-violet-600' },
+  gold: { card: 'tint-gold', icon: 'bg-gold-50 text-gold-600' },
+} as const;
+
 export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profile, onNavigate, onOpenProfile, drafts, onOpenDraft }) => {
   const t = getShellStrings(language);
   const voice = useVoiceAssistant(langConfig, profile, 'UDAAN ONE Home Voice');
@@ -63,14 +71,15 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
     { icon: ScanLine, title: t.hero.capabilities[2], body: 'Forms filled from your documents' },
   ];
 
-  const helpTiles: Array<{ id: ChannelMode; icon: React.ElementType; title: string; body: string; onClick?: () => void }> = [
-    { id: 'schemes', icon: Landmark, title: t.help.scheme, body: 'Search in your own words, with official sources.' },
-    { id: 'documents', icon: FileBadge, title: t.help.document, body: 'PAN, voter ID, passport, certificates — the right form and proofs.' },
-    { id: 'enterprise', icon: Rocket, title: t.help.business, body: 'Loans, grants and a plan for your trade.' },
-    { id: 'skills', icon: GraduationCap, title: t.help.jobs, body: 'Certified courses and job pathways.' },
-    { id: 'learning', icon: BookOpen, title: 'Learn a skill with AI', body: 'Python, computers, trades — lessons and doubt solving.' },
+  const helpTiles: Array<{ id: ChannelMode; icon: React.ElementType; title: string; body: string; hue: keyof typeof HUE; onClick?: () => void }> = [
+    { id: 'schemes', hue: 'saffron', icon: Landmark, title: t.help.scheme, body: 'Search in your own words, with official sources.' },
+    { id: 'documents', hue: 'gold', icon: FileBadge, title: t.help.document, body: 'PAN, voter ID, passport, certificates — the right form and proofs.' },
+    { id: 'enterprise', hue: 'teal', icon: Rocket, title: t.help.business, body: 'Loans, grants and a plan for your trade.' },
+    { id: 'skills', hue: 'violet', icon: GraduationCap, title: t.help.jobs, body: 'Certified courses and job pathways.' },
+    { id: 'learning', hue: 'violet', icon: BookOpen, title: 'Learn a skill with AI', body: 'Python, computers, trades — lessons and doubt solving.' },
     {
       id: 'schemes',
+      hue: 'teal',
       icon: BadgeCheck,
       title: t.help.eligibility,
       body: 'Add a few details for a preliminary estimate.',
@@ -89,22 +98,22 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
   ];
 
   return (
-    <div className="space-y-16 pb-4 sm:space-y-20">
+    <div className="space-y-20 pb-8 sm:space-y-28">
       {/* ── Hero ─────────────────────────────────────────── */}
-      <section className="surface-dark rounded-[28px]" aria-labelledby="hero-h">
-        <div className="grid gap-10 px-6 py-10 sm:px-10 sm:py-14 lg:grid-cols-[1.15fr_1fr] lg:gap-14 lg:px-14 lg:py-16">
+      <section className="surface-dark rounded-[32px]" aria-labelledby="hero-h">
+        <div className="grid gap-12 px-6 py-12 sm:px-12 sm:py-16 lg:grid-cols-[1.15fr_1fr] lg:gap-16 lg:px-16 lg:py-20">
           <div className="flex flex-col justify-center animate-fade-up">
             <span className="inline-flex w-fit items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-slate-200">
               <span className="h-1.5 w-1.5 rounded-full bg-teal" aria-hidden />
               {t.hero.eyebrow}
             </span>
-            <h1 id="hero-h" className="mt-6 text-[2.6rem] font-extrabold leading-[1.04] tracking-[-0.03em] sm:text-6xl lg:text-[4.1rem]">
+            <h1 id="hero-h" className="mt-8 text-[2.5rem] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-5xl lg:text-[3.5rem]">
               {t.hero.title}
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg">{t.hero.subtitle}</p>
+            <p className="mt-6 max-w-xl text-base font-normal leading-relaxed text-slate-300 sm:text-lg">{t.hero.subtitle}</p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button onClick={() => onNavigate('schemes')} className="btn btn-accent btn-lg h-14 px-6 text-base">
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+              <button onClick={() => onNavigate('schemes')} className="btn btn-accent btn-lg">
                 {t.hero.exploreCta} <ArrowRight className="h-5 w-5" aria-hidden />
               </button>
               <button
@@ -112,7 +121,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
                   orbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   onNavigate('voice_studio');
                 }}
-                className="btn btn-on-dark btn-lg h-14 px-6 text-base"
+                className="btn btn-on-dark btn-lg"
               >
                 <span className="relative flex h-2.5 w-2.5" aria-hidden>
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-60" />
@@ -122,7 +131,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
               </button>
             </div>
 
-            <ol className="mt-10 grid gap-4 border-t border-white/10 pt-6 sm:grid-cols-3">
+            <ol className="mt-12 grid gap-6 border-t border-white/10 pt-8 sm:grid-cols-3">
               {capabilities.map((c, i) => (
                 <li key={c.title} className="flex gap-3 sm:block">
                   <span className="flex items-center gap-2 text-sm font-bold text-white">
@@ -141,7 +150,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
           </div>
 
           {/* Live assistant preview — fully working voice + text */}
-          <div ref={orbRef} className="relative flex flex-col rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-7" aria-label="Talk to UDAAN AI">
+          <div ref={orbRef} className="relative flex flex-col rounded-[28px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl sm:p-8" aria-label="Talk to UDAAN AI">
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="flex items-center gap-2 font-semibold text-slate-200">
                 <span className="grid h-6 w-6 place-items-center rounded-md bg-gradient-to-br from-saffron to-teal text-[10px] font-extrabold text-navy" aria-hidden>
@@ -158,8 +167,8 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
               </span>
             </div>
 
-            <div className="my-5 flex justify-center">
-              <VoiceOrb state={voice.state} onClick={voice.toggleListening} label={voice.state === 'idle' ? t.orb.idle : 'Stop'} size="md" />
+            <div className="my-6 flex justify-center">
+              <VoiceOrb state={voice.state} onClick={voice.toggleListening} label={voice.state === 'idle' ? t.orb.idle : 'Stop'} size="lg" />
             </div>
 
             <div className="flex min-h-11 flex-wrap items-center justify-center gap-2">
@@ -198,7 +207,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
                   key={s}
                   onClick={() => voice.ask(s)}
                   disabled={busy}
-                  className="min-h-9 rounded-full border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-teal/60 hover:text-white disabled:opacity-50"
+                  className="min-h-11 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-teal/60 hover:text-white disabled:opacity-50"
                 >
                   {s}
                 </button>
@@ -212,9 +221,9 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
                 placeholder="Or type your question…"
-                className="h-12 min-w-0 flex-1 rounded-xl border border-white/12 bg-white/[0.06] px-4 text-sm text-white placeholder:text-slate-400 focus:border-teal focus:outline-none"
+                className="h-12 min-w-0 flex-1 rounded-full border border-white/15 bg-white/[0.06] px-5 text-base text-white placeholder:text-slate-400 focus:border-teal focus:outline-none"
               />
-              <button type="submit" disabled={!typed.trim() || busy} className="btn btn-accent h-12 w-12 p-0" aria-label="Send">
+              <button type="submit" disabled={!typed.trim() || busy} className="btn btn-on-dark h-12 w-12 p-0" aria-label="Send">
                 <Send className="h-5 w-5" aria-hidden />
               </button>
             </form>
@@ -224,8 +233,8 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
 
       {/* ── Continue where you left off ─────────────────── */}
       {latestDraft && (
-        <section aria-labelledby="continue-h" className="-mt-8 sm:-mt-10">
-          <div className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:p-6">
+        <section aria-labelledby="continue-h" className="-mt-10 sm:-mt-14">
+          <div className="card flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-8">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-teal-50 text-teal-600">
               <FileSearch className="h-6 w-6" aria-hidden />
             </span>
@@ -239,7 +248,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
                 </span>
               </div>
             </div>
-            <button onClick={() => onOpenDraft(latestDraft.id)} className="btn btn-primary btn-lg">
+            <button onClick={() => onOpenDraft(latestDraft.id)} className="btn btn-accent btn-lg">
               Continue <ArrowRight className="h-4 w-4" aria-hidden />
             </button>
           </div>
@@ -248,19 +257,19 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
 
       {/* ── What would you like help with today? ─────────── */}
       <section aria-labelledby="help-h">
-        <h2 id="help-h" className="max-w-2xl text-3xl font-extrabold text-navy sm:text-4xl">{t.help.title}</h2>
-        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-6 lg:grid-rows-2">
+        <h2 id="help-h" className="max-w-2xl text-3xl font-semibold text-navy sm:text-4xl">{t.help.title}</h2>
+        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-6 lg:grid-rows-2">
           {/* Signature tile: Smart Apply */}
           <button
             onClick={() => onNavigate('smart_apply')}
-            className="surface-dark group flex min-h-[18rem] flex-col justify-between rounded-[var(--radius-card)] p-6 text-left transition hover:shadow-lift md:col-span-2 lg:col-span-3 lg:row-span-2 lg:p-8"
+            className="surface-dark group flex min-h-[18rem] flex-col justify-between rounded-[var(--radius-card)] p-8 text-left transition-shadow duration-200 hover:shadow-lift md:col-span-2 lg:col-span-3 lg:row-span-2 lg:p-10"
           >
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-teal/15 px-3 py-1 text-xs font-bold text-teal">
                 <ScanLine className="h-3.5 w-3.5" aria-hidden /> Smart Apply & Autofill
               </span>
-              <span className="mt-5 block text-2xl font-extrabold leading-tight sm:text-3xl">{t.help.apply}</span>
-              <span className="mt-3 block max-w-md text-sm leading-relaxed text-slate-300">
+              <span className="mt-6 block font-display text-2xl font-semibold leading-tight sm:text-3xl">{t.help.apply}</span>
+              <span className="mt-4 block max-w-md text-base leading-relaxed text-slate-300">
                 Upload or scan your documents once. We read the details, fill the form, ask only what is missing — and you check everything before downloading.
               </span>
             </div>
@@ -282,39 +291,39 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
             <button
               key={tile.title}
               onClick={tile.onClick || (() => onNavigate(tile.id))}
-              className={`card group flex min-h-[8.5rem] flex-col p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lift animate-fade-up lg:col-span-1`}
+              className={`card group flex min-h-[9.5rem] flex-col p-6 text-left hover:-translate-y-0.5 hover:shadow-lift animate-fade-up lg:col-span-1 ${HUE[tile.hue].card}`}
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <span className="flex w-full items-start justify-between">
-                <span className={`grid h-11 w-11 place-items-center rounded-xl ${i % 2 === 0 ? 'bg-saffron-50 text-saffron-600' : 'bg-teal-50 text-teal-600'}`}>
+                <span className={`grid h-12 w-12 place-items-center rounded-2xl ${HUE[tile.hue].icon}`}>
                   <tile.icon className="h-5 w-5" aria-hidden />
                 </span>
                 <ArrowUpRight className="h-5 w-5 text-muted transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-navy" aria-hidden />
               </span>
-              <span className="mt-4 font-bold text-navy">{tile.title}</span>
-              <span className="mt-1 text-sm text-muted">{tile.body}</span>
+              <span className="mt-5 font-display font-semibold text-navy">{tile.title}</span>
+              <span className="mt-1.5 text-sm leading-relaxed text-muted">{tile.body}</span>
             </button>
           ))}
         </div>
       </section>
 
       {/* ── Trust commitments (true of the product, not marketing claims) ── */}
-      <section aria-labelledby="trust-h" className="grid gap-10 lg:grid-cols-[1fr_2fr]">
+      <section aria-labelledby="trust-h" className="grid gap-12 lg:grid-cols-[1fr_2fr]">
         <div>
           <p className="eyebrow">Built on trust</p>
-          <h2 id="trust-h" className="mt-3 text-3xl font-extrabold text-navy">Help you can rely on</h2>
+          <h2 id="trust-h" className="mt-4 text-3xl font-semibold text-navy">Help you can rely on</h2>
           <p className="mt-3 text-muted">Clear about what is known, what is AI-explained and what still needs official confirmation.</p>
         </div>
-        <ol className="grid gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line sm:grid-cols-3">
+        <ol className="grid gap-px overflow-hidden rounded-[var(--radius-card)] border border-navy/[0.06] bg-navy/[0.06] shadow-card sm:grid-cols-3">
           {[
             { icon: Landmark, title: 'Official sources first', body: 'Every scheme links to its official portal. Eligibility is always shown as a preliminary estimate.' },
             { icon: Lock, title: 'Your documents stay yours', body: 'Originals are discarded after reading, Aadhaar is masked, details are encrypted — delete them any time.' },
             { icon: ShieldCheck, title: 'Nothing submitted without you', body: 'You review and approve every form. UDAAN ONE never claims an application is submitted or approved.' },
           ].map((c, i) => (
-            <li key={c.title} className="bg-white p-6">
+            <li key={c.title} className="bg-white p-8">
               <span className="font-mono text-xs text-muted">0{i + 1}</span>
               <c.icon className="mt-4 h-6 w-6 text-teal-600" aria-hidden />
-              <p className="mt-3 font-bold text-navy">{c.title}</p>
+              <p className="mt-4 font-display font-semibold text-navy">{c.title}</p>
               <p className="mt-1.5 text-sm leading-relaxed text-muted">{c.body}</p>
             </li>
           ))}
@@ -326,20 +335,20 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="eyebrow">Reach without barriers</p>
-            <h2 id="access-heading" className="mt-3 text-3xl font-extrabold text-navy">Use UDAAN ONE your way</h2>
+            <h2 id="access-heading" className="mt-4 text-3xl font-semibold text-navy">Use UDAAN ONE your way</h2>
           </div>
           <button onClick={() => onNavigate('voice_studio')} className="btn btn-primary">
             {t.nav.assistant} <ArrowRight className="h-4 w-4" aria-hidden />
           </button>
         </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {accessModes.map((m) => (
-            <button key={m.id} onClick={() => onNavigate(m.id)} className="card flex items-center gap-4 p-4 text-left transition hover:shadow-lift">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy-50 text-navy">
+            <button key={m.id} onClick={() => onNavigate(m.id)} className="card flex items-center gap-4 p-5 text-left hover:-translate-y-0.5 hover:shadow-lift">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-navy-50 text-navy">
                 <m.icon className="h-5 w-5" aria-hidden />
               </span>
               <span>
-                <span className="block font-bold text-navy">{m.title}</span>
+                <span className="block font-display font-semibold text-navy">{m.title}</span>
                 <span className="block text-sm text-muted">{m.body}</span>
               </span>
             </button>
@@ -347,7 +356,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
         </div>
       </section>
 
-      <p className="mx-auto max-w-3xl text-center text-xs leading-relaxed text-muted">
+      <p className="mx-auto max-w-3xl text-center text-sm leading-relaxed text-muted">
         UDAAN ONE gives guidance and preliminary eligibility estimates only. Final eligibility, benefits and approvals are decided by the
         responsible government department. Always confirm details on the official portal linked with each scheme.
       </p>

@@ -131,7 +131,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
               </button>
             </div>
 
-            <ol className="mt-12 grid gap-6 border-t border-white/10 pt-8 sm:grid-cols-3">
+            <ol className="easy-hide mt-12 grid gap-6 border-t border-white/10 pt-8 sm:grid-cols-3">
               {capabilities.map((c, i) => (
                 <li key={c.title} className="flex gap-3 sm:block">
                   <span className="flex items-center gap-2 text-sm font-bold text-white">
@@ -308,7 +308,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
       </section>
 
       {/* ── Trust commitments (true of the product, not marketing claims) ── */}
-      <section aria-labelledby="trust-h" className="grid gap-12 lg:grid-cols-[1fr_2fr]">
+      <section aria-labelledby="trust-h" className="easy-hide grid gap-12 lg:grid-cols-[1fr_2fr]">
         <div>
           <p className="eyebrow">Built on trust</p>
           <h2 id="trust-h" className="mt-4 text-3xl font-semibold text-navy">Help you can rely on</h2>
@@ -331,7 +331,7 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
       </section>
 
       {/* ── Access for everyone ─────────────────────────── */}
-      <section aria-labelledby="access-heading">
+      <section aria-labelledby="access-heading" className="easy-hide">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="eyebrow">Reach without barriers</p>

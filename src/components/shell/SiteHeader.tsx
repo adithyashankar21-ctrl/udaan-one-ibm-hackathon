@@ -92,6 +92,8 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
   const [textSize, setTextSize] = useState<TextSize>(() => readPref('kv-text-size', 'md') as TextSize);
   const [highContrast, setHighContrast] = useState(() => readPref('kv-contrast', 'normal') === 'high');
   const [reduceMotion, setReduceMotion] = useState(() => readPref('kv-motion', 'normal') === 'reduce');
+  const [darkMode, setDarkMode] = useState(() => readPref('kv-theme', 'light') === 'dark');
+  const [easyMode, setEasyMode] = useState(() => readPref('kv-easy', 'off') === 'on');
 
   useEffect(() => {
     document.documentElement.dataset.textSize = textSize;
@@ -105,6 +107,14 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
     document.documentElement.dataset.motion = reduceMotion ? 'reduce' : 'normal';
     writePref('kv-motion', reduceMotion ? 'reduce' : 'normal');
   }, [reduceMotion]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
+    writePref('kv-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+  useEffect(() => {
+    document.documentElement.dataset.easy = easyMode ? 'on' : 'off';
+    writePref('kv-easy', easyMode ? 'on' : 'off');
+  }, [easyMode]);
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);
@@ -161,7 +171,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <span className="block font-display text-[17px] font-semibold tracking-[-0.02em] text-navy">
                 UDAAN <span className="text-teal-600">ONE</span>
               </span>
-              <span className="hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
+              <span className="easy-hide hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
             </span>
           </button>
 
@@ -244,6 +254,8 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
                     </div>
                   </div>
                   {[
+                    { label: 'Dark mode', value: darkMode, set: setDarkMode },
+                    { label: 'Easy mode', value: easyMode, set: setEasyMode },
                     { label: 'High contrast', value: highContrast, set: setHighContrast },
                     { label: 'Reduce motion', value: reduceMotion, set: setReduceMotion },
                   ].map((opt) => (
@@ -265,7 +277,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
             </div>
 
             {/* Access modes */}
-            <div className="relative hidden lg:block" ref={modesRef}>
+            <div className="easy-hide relative hidden lg:block" ref={modesRef}>
               <button
                 onClick={() => setModesOpen((o) => !o)}
                 className={`${iconBtn} ${modeActive ? 'border-saffron bg-saffron-50' : ''}`}

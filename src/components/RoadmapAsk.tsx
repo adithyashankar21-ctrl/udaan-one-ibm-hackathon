@@ -81,12 +81,12 @@ export const RoadmapAsk: React.FC<{
               submit(idea);
             }}
             disabled={busy}
-            className="rounded-full border border-line bg-white px-3 py-1.5 text-sm text-navy transition hover:border-teal/50 disabled:opacity-50"
+            className="min-h-11 rounded-full border border-line bg-white px-4 py-2 text-sm text-navy transition hover:border-teal/50 disabled:opacity-50"
           >
             {idea}
           </button>
         ))}
-        <button onClick={() => submit('')} disabled={busy} className="inline-flex items-center gap-1 rounded-full border border-teal/40 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-600 disabled:opacity-50">
+        <button onClick={() => submit('')} disabled={busy} className="inline-flex min-h-11 items-center gap-1 rounded-full border border-teal/40 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-600 disabled:opacity-50">
           <UserRound className="h-3.5 w-3.5" aria-hidden /> From my profile
         </button>
       </div>

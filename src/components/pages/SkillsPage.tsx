@@ -88,7 +88,7 @@ export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, onA
               key={s}
               onClick={() => setSector(s)}
               aria-pressed={sector === s}
-              className={`h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${sector === s ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
+              className={`h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${sector === s ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
             >
               {s}
             </button>
@@ -130,7 +130,7 @@ export const SkillsPage: React.FC<SkillsPageProps> = ({ onNavigate, onLearn, onA
                   href="https://www.skillindiadigital.gov.in"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-semibold text-teal-600 hover:underline"
+                  className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-teal-600 hover:underline"
                 >
                   Find a centre <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </a>

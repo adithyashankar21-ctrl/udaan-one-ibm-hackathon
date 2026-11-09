@@ -203,7 +203,7 @@ p { text-wrap: pretty; }
 }
 
 /* Section colour identity: Schemes saffron, Loans teal, Skills violet, Documents gold */
-main[data-section] { background: radial-gradient(56rem 16rem at 85% -4rem, var(--sec-glow), transparent 70%) no-repeat; }
+main[data-section] { background: radial-gradient(38rem 13rem at 68% -2rem, var(--sec-glow), transparent 72%) no-repeat; }
 main[data-section="schemes"] { --sec: var(--color-saffron-600); --sec-glow: rgb(255 153 51 / 0.20); }
 main[data-section="loans"] { --sec: var(--color-teal-600); --sec-glow: rgb(45 212 191 / 0.20); }
 main[data-section="skills"] { --sec: var(--color-violet-600); --sec-glow: rgb(108 92 231 / 0.16); }

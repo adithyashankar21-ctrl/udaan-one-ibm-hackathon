@@ -242,7 +242,7 @@ export const DocumentsPage: React.FC<Props> = ({ profile, langConfig, session, o
               key={c.id}
               onClick={() => setCategory(c.id)}
               aria-pressed={category === c.id}
-              className={`h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${category === c.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
+              className={`h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${category === c.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
             >
               {c.label}
             </button>

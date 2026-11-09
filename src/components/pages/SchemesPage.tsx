@@ -159,7 +159,7 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
               key={f.id}
               onClick={() => toggleFilter(f.id)}
               aria-pressed={active.includes(f.id)}
-              className={`h-10 rounded-full border px-4 text-sm font-semibold transition ${
+              className={`h-11 rounded-full border px-4 text-sm font-semibold transition ${
                 active.includes(f.id) ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-saffron/60'
               }`}
             >
@@ -216,7 +216,7 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
                     onClick={() => onToggleSave(s.id)}
                     aria-pressed={saved}
                     aria-label={saved ? 'Remove from saved' : 'Save scheme'}
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition ${saved ? 'border-green bg-green-50 text-green' : 'border-line text-muted hover:text-navy'}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${saved ? 'border-green bg-green-50 text-green' : 'border-line text-muted hover:text-navy'}`}
                   >
                     {saved ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
                   </button>
@@ -307,7 +307,7 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
                     href={s.officialUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-green hover:underline"
+                    className="ml-auto inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-green hover:underline"
                   >
                     Source: {s.officialLabel} <ExternalLink className="h-3.5 w-3.5" />
                   </a>
@@ -342,7 +342,7 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
           <div className="card max-h-[85vh] w-full max-w-5xl overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-extrabold text-navy">Compare schemes</h2>
-              <button onClick={() => setShowCompare(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-ivory" aria-label="Close">
+              <button onClick={() => setShowCompare(false)} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-ivory" aria-label="Close">
                 <X className="h-5 w-5" />
               </button>
             </div>

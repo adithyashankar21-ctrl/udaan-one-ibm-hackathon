@@ -236,9 +236,9 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
                     <p className="mt-2 text-xs text-muted">{e.reasons[0]}</p>
                     <div className="mt-auto flex flex-wrap gap-3 pt-3">
                       {FORM_SCHEMA_MAP[s.id] && (
-                        <button onClick={() => onApply(s.id)} className="text-sm font-semibold text-teal-600 hover:underline">Apply</button>
+                        <button onClick={() => onApply(s.id)} className="inline-flex min-h-11 items-center text-sm font-semibold text-teal-600 hover:underline">Apply</button>
                       )}
-                      <button onClick={() => onToggleSave(s.id)} className="text-sm font-semibold text-muted hover:text-navy">Save</button>
+                      <button onClick={() => onToggleSave(s.id)} className="inline-flex min-h-11 items-center text-sm font-semibold text-muted hover:text-navy">Save</button>
                     </div>
                   </li>
                 ))}

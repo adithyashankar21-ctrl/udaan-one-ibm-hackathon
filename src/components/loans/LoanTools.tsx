@@ -523,7 +523,7 @@ export const LoanTools: React.FC<Props> = ({ profile, langConfig, tool, onTool, 
           role="tab"
           aria-selected={tool === t.id}
           onClick={() => onTool(t.id)}
-          className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${tool === t.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
+          className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${tool === t.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
         >
           <t.icon className="h-4 w-4" aria-hidden /> {t.label}
         </button>

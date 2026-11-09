@@ -158,16 +158,16 @@ const LoanCard: React.FC<{
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
-        <button onClick={() => onApply(l.id)} className="btn btn-accent btn-sm h-10">
+        <button onClick={() => onApply(l.id)} className="btn btn-accent btn-sm">
           <ScanLine className="h-4 w-4" aria-hidden /> Prepare application
         </button>
-        <button onClick={() => onApply(l.id, true)} className="btn btn-success btn-sm h-10">
+        <button onClick={() => onApply(l.id, true)} className="btn btn-success btn-sm">
           <AudioLines className="h-4 w-4" aria-hidden /> By voice
         </button>
-        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="btn btn-ghost btn-sm h-10">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="btn btn-ghost btn-sm">
           {open ? 'Hide lenders' : `Compare ${l.offers.length} lender${l.offers.length === 1 ? '' : 's'}`} <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
         </button>
-        <a href={l.officialUrl} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-teal-600 hover:underline">
+        <a href={l.officialUrl} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-teal-600 hover:underline">
           {l.officialLabel} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
         </a>
       </div>
@@ -327,7 +327,7 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onApp
                 key={id}
                 onClick={() => setBacking(id)}
                 aria-pressed={backing === id}
-                className={`h-10 rounded-lg px-3 text-sm font-semibold transition ${backing === id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
+                className={`h-11 rounded-lg px-3 text-sm font-semibold transition ${backing === id ? 'bg-navy text-white' : 'text-muted hover:text-navy'}`}
               >
                 {label}
               </button>
@@ -342,7 +342,7 @@ export const LoansPage: React.FC<Props> = ({ profile, langConfig, onApply, onApp
               onClick={() => setCategory(c.id)}
               aria-pressed={category === c.id}
               title={c.hint}
-              className={`h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${category === c.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
+              className={`h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition ${category === c.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:border-navy-700/40'}`}
             >
               {c.label}
             </button>

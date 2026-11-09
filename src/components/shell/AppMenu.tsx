@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Check, ClipboardList, FileBadge, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Search, Sparkles, Store, User, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { BookOpen, Check, ClipboardList, FileBadge, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Sparkles, Store, User } from 'lucide-react';
 import type { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
@@ -106,14 +107,11 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
   useEffect(() => {
     if (!open) return;
     setQuery('');
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const focus = window.setTimeout(() => inputRef.current?.focus(), 60);
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
     return () => {
       window.clearTimeout(focus);
-      document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKey);
       try {
         recRef.current?.stop();
@@ -161,136 +159,106 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
   };
 
   const searching = query.trim().length > 0;
-  const bestItem = groups.flatMap((g) => g.items).find((i) => i.id === best);
+  let row = 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/50 backdrop-blur-md sm:items-start sm:p-6 sm:pt-[7vh]" onMouseDown={onClose} role="presentation">
+    <>
+      {/* Click-away layer: a faint dim, no heavy overlay */}
+      {createPortal(<div className="fixed inset-0 z-30 bg-navy/20 backdrop-blur-[2px]" onMouseDown={onClose} aria-hidden />, document.body)}
+
+      {/* The popover drops from the Menu button */}
       <div
         role="dialog"
-        aria-modal="true"
         aria-label={MENU_WORD[language]}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="app-menu-panel flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[32px] border border-white/60 bg-ivory/90 shadow-lift backdrop-blur-2xl animate-fade-up sm:max-h-[86vh] sm:rounded-[32px]"
+        className="app-menu-panel absolute left-0 top-full z-50 mt-3 flex max-h-[calc(100vh-6.5rem)] w-[21rem] max-sm:max-h-[calc(100vh-10.5rem)] max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.25rem] max-sm:mt-0 max-sm:w-auto origin-top-left flex-col overflow-hidden rounded-[28px] border border-white/70 bg-ivory/[0.97] p-2 shadow-lift backdrop-blur-2xl animate-fade-up"
       >
         {/* AI box */}
-        <div className="relative shrink-0 overflow-hidden px-5 pb-5 pt-5 sm:px-8 sm:pt-7">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-violet/20 blur-3xl" aria-hidden />
-          <div className="pointer-events-none absolute -left-10 -top-24 h-48 w-48 rounded-full bg-saffron/25 blur-3xl" aria-hidden />
-          <div className="relative flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 font-display text-lg font-semibold text-navy">
-              <span className="grid h-8 w-8 place-items-center rounded-xl bg-violet-50 text-violet-600">
-                <Sparkles className="h-4 w-4" aria-hidden />
-              </span>
-              {MENU_WORD[language]}
-            </p>
-            <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-navy/10 bg-white text-navy transition-colors hover:border-navy/30" aria-label="Close">
-              <X className="h-5 w-5" aria-hidden />
+        <form onSubmit={submit} className="relative flex shrink-0 items-center gap-1.5 rounded-full border border-navy/10 bg-white p-1 shadow-card focus-within:border-violet focus-within:shadow-[0_0_0_4px_rgb(108_92_231/0.18)]">
+          <span className="ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet to-[#8b7df0] text-white">
+            <Sparkles className="h-4 w-4" aria-hidden />
+          </span>
+          <label htmlFor="app-menu-ask" className="sr-only">
+            {ASK_PLACEHOLDER[language]}
+          </label>
+          <input
+            id="app-menu-ask"
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={ASK_PLACEHOLDER[language]}
+            autoComplete="off"
+            className="h-10 min-w-0 flex-1 bg-transparent text-[0.95rem] text-navy outline-none placeholder:text-muted"
+            style={{ boxShadow: 'none', outline: 'none' }}
+          />
+          {canListen && (
+            <button
+              type="button"
+              onClick={listen}
+              aria-pressed={listening}
+              aria-label={t.orb.listening}
+              className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition-all duration-200 ${listening ? 'animate-orb-listen bg-saffron text-navy shadow-[0_0_0_5px_rgb(255_153_51/0.25)]' : 'text-navy hover:bg-navy-50'}`}
+            >
+              <Mic className="h-5 w-5" aria-hidden />
             </button>
-          </div>
-          <form onSubmit={submit} className="relative mt-4 flex items-center gap-2 rounded-full border border-navy/10 bg-white p-1.5 shadow-card focus-within:border-violet focus-within:shadow-[0_0_0_4px_rgb(108_92_231/0.18)]">
-            <Search className="ml-3 h-5 w-5 shrink-0 text-muted" aria-hidden />
-            <label htmlFor="app-menu-ask" className="sr-only">
-              {ASK_PLACEHOLDER[language]}
-            </label>
-            <input
-              id="app-menu-ask"
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={ASK_PLACEHOLDER[language]}
-              autoComplete="off"
-              className="h-11 min-w-0 flex-1 bg-transparent text-base text-navy outline-none placeholder:text-muted"
-              style={{ boxShadow: 'none', outline: 'none' }}
-            />
-            {canListen && (
-              <button
-                type="button"
-                onClick={listen}
-                aria-pressed={listening}
-                aria-label={t.orb.listening}
-                className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition-all duration-200 ${listening ? 'animate-orb-listen bg-saffron text-navy shadow-[0_0_0_6px_rgb(255_153_51/0.25)]' : 'bg-navy-50 text-navy hover:bg-ivory-200'}`}
-              >
-                <Mic className="h-5 w-5" aria-hidden />
-              </button>
-            )}
-            <button type="submit" disabled={!searching} className="btn btn-accent h-11 w-11 shrink-0 p-0 disabled:opacity-40" aria-label="Go">
-              <ArrowRight className="h-5 w-5" aria-hidden />
+          )}
+        </form>
+
+        {/* Options: one simple list, grouped by thin labels */}
+        <div className="mt-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-0.5 pb-1">
+          {groups.map((g) => (
+            <div key={g.title} role="group" aria-label={g.title}>
+              <p className="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-muted">{g.title}</p>
+              {g.items.map((item) => {
+                const active = current === item.id;
+                const isBest = item.id === best;
+                const dim = searching && matches.length > 0 && !matches.includes(item.id);
+                const delay = row++ * 18;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => go(item.id)}
+                    aria-current={active ? 'page' : undefined}
+                    style={{ animationDelay: `${delay}ms` }}
+                    className={`app-menu-row group flex min-h-11 w-full items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition-colors duration-150 animate-fade-up ${isBest ? 'bg-violet-50 ring-1 ring-violet/40' : active ? 'bg-white shadow-card' : 'hover:bg-white/80'} ${dim ? 'opacity-35' : ''}`}
+                  >
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${HUE[item.hue]}`}>
+                      <item.icon className="h-[18px] w-[18px]" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1 text-[0.95rem] font-semibold leading-snug text-navy">{item.label}</span>
+                    {isBest ? (
+                      <kbd className="rounded-md bg-white px-1.5 py-0.5 font-sans text-[11px] font-semibold text-violet-600">Enter</kbd>
+                    ) : (
+                      active && <Check className="h-4 w-4 shrink-0 text-teal-600" aria-label="Current page" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+          {searching && !best && (
+            <button onClick={() => go('voice_studio')} className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-2xl bg-violet-50 px-3 text-left text-sm font-semibold text-violet-600 ring-1 ring-violet/30">
+              <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
+              {t.nav.assistant}
+              <kbd className="ml-auto rounded-md bg-white px-1.5 py-0.5 font-sans text-[11px]">Enter</kbd>
             </button>
-          </form>
-          {searching && (
-            <p className="relative mt-3 flex items-center gap-2 text-sm text-muted" aria-live="polite">
-              <Sparkles className="h-4 w-4 shrink-0 text-violet-600" aria-hidden />
-              {bestItem ? (
-                <span>
-                  <span className="font-semibold text-navy">{bestItem.label}</span> · Enter
-                </span>
-              ) : (
-                <span>
-                  <span className="font-semibold text-navy">{t.nav.assistant}</span> · Enter
-                </span>
-              )}
-            </p>
           )}
         </div>
 
-        {/* Everything in the app */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 sm:px-8">
-          {groups.map((g) => (
-            <section key={g.title} className="mt-4 first:mt-0" aria-label={g.title}>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{g.title}</h2>
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {g.items.map((item) => {
-                  const active = current === item.id;
-                  const isMatch = matches.includes(item.id);
-                  const dim = searching && matches.length > 0 && !isMatch;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        onClick={() => go(item.id)}
-                        aria-current={active ? 'page' : undefined}
-                        className={`group flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card ${
-                          item.id === best
-                            ? 'border-violet bg-white shadow-[0_0_0_3px_rgb(108_92_231/0.2)]'
-                            : active
-                              ? 'border-saffron/60 bg-white shadow-card'
-                              : 'border-navy/[0.07] bg-white/80 hover:bg-white'
-                        } ${dim ? 'opacity-40' : ''}`}
-                      >
-                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${HUE[item.hue]}`}>
-                          <item.icon className="h-5 w-5" aria-hidden />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5 text-[0.95rem] font-semibold leading-snug text-navy">
-                            {item.label}
-                            {active && <Check className="h-4 w-4 shrink-0 text-teal-600" aria-label="Current page" />}
-                          </span>
-                          <span className="mt-0.5 block text-sm leading-snug text-muted">{item.desc}</span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ))}
-
-          <button
-            onClick={() => {
-              onOpenProfile();
-              onClose();
-            }}
-            className="mt-4 flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl bg-navy p-3 text-left text-white transition-transform duration-200 hover:-translate-y-0.5"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/15">
-              <User className="h-5 w-5" aria-hidden />
-            </span>
-            <span translate={profileName ? 'no' : undefined} className="min-w-0 flex-1 truncate font-semibold">
-              {profileName || t.profile}
-            </span>
-            <ArrowRight className="h-5 w-5 shrink-0 text-white/70" aria-hidden />
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            onOpenProfile();
+            onClose();
+          }}
+          className="mt-1 flex min-h-11 shrink-0 items-center gap-3 rounded-2xl bg-navy px-2 py-1.5 text-left text-white transition-opacity hover:opacity-90"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/15">
+            <User className="h-[18px] w-[18px]" aria-hidden />
+          </span>
+          <span translate={profileName ? 'no' : undefined} className="min-w-0 flex-1 truncate text-[0.95rem] font-semibold">
+            {profileName || t.profile}
+          </span>
+        </button>
       </div>
-    </div>
+    </>
   );
 };

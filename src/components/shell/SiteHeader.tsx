@@ -161,8 +161,9 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
           </button>
 
           {/* The pop-up menu replaces the row of links: long translated names never crowd the bar */}
+          <div className="relative">
           <button
-            onClick={() => setMenuOpen(true)}
+            onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="dialog"
             aria-label={MENU_WORD[language]}
             aria-expanded={menuOpen}
@@ -175,6 +176,8 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
             <span className="hidden sm:inline">{MENU_WORD[language]}</span>
             <kbd className="hidden rounded-md bg-navy-50 px-1.5 py-0.5 font-sans text-[11px] font-semibold text-muted lg:inline">Ctrl K</kbd>
           </button>
+            <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} current={current} onNavigate={onNavigate} language={language} profileName={profileName} onOpenProfile={onOpenProfile} />
+          </div>
 
           <div className="flex items-center gap-1.5">
             <button onClick={() => go('voice_studio')} className="hidden h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-[#ffb067] to-saffron text-navy shadow-[0_8px_18px_-8px_rgb(255_153_51/0.9)] transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 sm:flex" aria-label={t.nav.assistant} title={t.nav.assistant}>
@@ -288,7 +291,6 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
 
       </header>
 
-      <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} current={current} onNavigate={onNavigate} language={language} profileName={profileName} onOpenProfile={onOpenProfile} />
 
       {/* Mobile bottom navigation: the five most-used destinations, icon + label */}
       <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">

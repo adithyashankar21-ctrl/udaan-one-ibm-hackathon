@@ -495,7 +495,7 @@ html[data-easy="on"] header button span { white-space: nowrap; }
 html[data-easy="on"] main .surface-dark span.inline-flex { white-space: normal; }
 
 /* Pop-up menu in dark mode: translucent cards on a midnight panel */
-html[data-theme="dark"] .app-menu-panel { background-color: rgb(14 22 54 / 0.92); border-color: rgb(255 255 255 / 0.12); }
+html[data-theme="dark"] .app-menu-panel { background-color: rgb(14 22 54 / 0.97); border-color: rgb(255 255 255 / 0.12); }
 html[data-theme="dark"] .app-menu-panel [class*="bg-white/80"] { background-color: rgb(255 255 255 / 0.07); border-color: rgb(255 255 255 / 0.1); }
 html[data-theme="dark"] .app-menu-panel [class*="bg-white/80"]:hover { background-color: rgb(255 255 255 / 0.12); }
 html[data-theme="dark"] .app-menu-panel li button.bg-white { background-color: rgb(255 255 255 / 0.1); }

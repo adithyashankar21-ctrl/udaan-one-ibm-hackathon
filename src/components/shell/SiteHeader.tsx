@@ -25,6 +25,7 @@ import { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
 import { authEnabled, signOut } from '../../services/supabase';
+import { AppMenu, MENU_WORD } from './AppMenu';
 
 interface SiteHeaderProps {
   current: ChannelMode;
@@ -84,10 +85,9 @@ const SECTION_OF: Partial<Record<ChannelMode, ChannelMode>> = { enterprise: 'ski
 
 export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, language, onLanguageChange, profileName, onOpenProfile }) => {
   const t = getShellStrings(language);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [a11yOpen, setA11yOpen] = useState(false);
-  const [modesOpen, setModesOpen] = useState(false);
 
   const [textSize, setTextSize] = useState<TextSize>(() => readPref('kv-text-size', 'md') as TextSize);
   const [highContrast, setHighContrast] = useState(() => readPref('kv-contrast', 'normal') === 'high');
@@ -121,39 +121,24 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
 
   const langRef = useDismiss(langOpen, () => setLangOpen(false));
   const a11yRef = useDismiss(a11yOpen, () => setA11yOpen(false));
-  const modesRef = useDismiss(modesOpen, () => setModesOpen(false));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setMenuOpen((o) => !o);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const section = SECTION_OF[current] || current;
-  const primary: Array<{ id: ChannelMode; label: string; icon: React.ElementType }> = [
-    { id: 'schemes', label: t.nav.schemes, icon: Compass },
-    { id: 'loans', label: t.nav.loans, icon: IndianRupee },
-    { id: 'skills', label: t.nav.skills, icon: Sparkles },
-    { id: 'smart_apply', label: t.nav.apply, icon: ScanLine },
-    { id: 'applications', label: t.nav.applications, icon: ClipboardList },
-  ];
-
-  const modes: Array<{ id: ChannelMode; label: string; desc: string; icon: React.ElementType }> = [
-    { id: 'voice_studio', label: 'Talk to UDAAN AI', desc: 'Full voice conversation', icon: Mic },
-    { id: 'ivr', label: 'Phone helpline', desc: 'Phone-style voice menu', icon: PhoneCall },
-    { id: 'whatsapp', label: 'WhatsApp assistant', desc: 'Chat-style guidance', icon: MessageSquare },
-    { id: 'kiosk', label: 'Kiosk mode', desc: 'Large, simple public screen', icon: Store },
-    { id: 'district_map', label: 'District map', desc: 'Training & opportunities by district', icon: MapPin },
-  ];
-
   const activeLang = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
-  const modeActive = modes.some((m) => m.id === current && m.id !== 'voice_studio');
 
   const go = (id: ChannelMode) => {
     onNavigate(id);
-    setMobileOpen(false);
-    setModesOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  const navBtn = (active: boolean) =>
-    `relative inline-flex h-11 items-center whitespace-nowrap rounded-full px-3 text-sm font-semibold transition-colors duration-200 xl:px-4 ${
-      active ? 'text-navy after:absolute after:inset-x-4 after:-bottom-[10px] after:h-[2px] after:rounded-full after:bg-saffron' : 'text-muted hover:text-navy hover:bg-navy/[0.05]'
-    }`;
 
   const iconBtn = 'flex h-11 w-11 items-center justify-center rounded-full border border-navy/10 bg-white text-navy transition-colors duration-200 hover:border-navy/30';
 
@@ -171,22 +156,29 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               <span className="block font-display text-[17px] font-semibold tracking-[-0.02em] text-navy">
                 UDAAN <span className="text-teal-600">ONE</span>
               </span>
-              <span className="easy-hide hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
+              <span translate="no" className="easy-hide hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
             </span>
           </button>
 
-          {/* Desktop navigation */}
-          <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Primary">
-            {primary.map((item) => (
-              <button key={item.id} onClick={() => go(item.id)} className={navBtn(section === item.id)} aria-current={section === item.id ? 'page' : undefined}>
-                {item.label}
-              </button>
-            ))}
-          </nav>
+          {/* The pop-up menu replaces the row of links: long translated names never crowd the bar */}
+          <button
+            onClick={() => setMenuOpen(true)}
+            aria-haspopup="dialog"
+            aria-label={MENU_WORD[language]}
+            aria-expanded={menuOpen}
+            aria-keyshortcuts="Control+K Meta+K"
+            className="group flex h-11 items-center gap-2 rounded-full border border-navy/10 bg-white py-1 pl-1.5 pr-1.5 text-sm font-semibold text-navy shadow-card sm:pr-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet/40 hover:shadow-lift"
+          >
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-violet to-[#8b7df0] text-white">
+              <Sparkles className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="hidden sm:inline">{MENU_WORD[language]}</span>
+            <kbd className="hidden rounded-md bg-navy-50 px-1.5 py-0.5 font-sans text-[11px] font-semibold text-muted lg:inline">Ctrl K</kbd>
+          </button>
 
           <div className="flex items-center gap-1.5">
-            <button onClick={() => go('voice_studio')} className={`btn btn-sm btn-primary hidden xl:inline-flex`}>
-              <Mic className="h-4 w-4" aria-hidden /> {t.nav.assistant}
+            <button onClick={() => go('voice_studio')} className="hidden h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-[#ffb067] to-saffron text-navy shadow-[0_8px_18px_-8px_rgb(255_153_51/0.9)] transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 sm:flex" aria-label={t.nav.assistant} title={t.nav.assistant}>
+              <Mic className="h-5 w-5" aria-hidden />
             </button>
 
             {/* Language */}
@@ -276,41 +268,6 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               )}
             </div>
 
-            {/* Access modes */}
-            <div className="easy-hide relative hidden lg:block" ref={modesRef}>
-              <button
-                onClick={() => setModesOpen((o) => !o)}
-                className={`${iconBtn} ${modeActive ? 'border-saffron bg-saffron-50' : ''}`}
-                aria-expanded={modesOpen}
-                aria-haspopup="menu"
-                aria-label={t.nav.more}
-                title={t.nav.more}
-              >
-                <LayoutGrid className="h-5 w-5" aria-hidden />
-              </button>
-              {modesOpen && (
-                <div role="menu" aria-label={t.nav.more} className="card absolute right-0 mt-2 w-80 p-2 animate-fade-up">
-                  <p className="px-2.5 pb-1 pt-1.5 text-xs font-bold uppercase tracking-wider text-muted">{t.nav.more}</p>
-                  {modes.map((m) => (
-                    <button
-                      key={m.id}
-                      role="menuitem"
-                      onClick={() => go(m.id)}
-                      className={`flex w-full items-start gap-3 rounded-xl p-2.5 text-left transition-colors ${current === m.id ? 'bg-saffron-50' : 'hover:bg-ivory'}`}
-                    >
-                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy-50 text-navy">
-                        <m.icon className="h-4 w-4" aria-hidden />
-                      </span>
-                      <span>
-                        <span className="block text-sm font-semibold text-navy">{m.label}</span>
-                        <span className="block text-xs text-muted">{m.desc}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Profile */}
             <button onClick={onOpenProfile} className="hidden h-11 items-center gap-2 rounded-full bg-navy px-1.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800 sm:flex 2xl:pr-3" aria-label={profileName ? `${t.profile}: ${profileName}` : t.signIn}>
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">
@@ -326,61 +283,12 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
               </button>
             )}
 
-            <button onClick={() => setMobileOpen((o) => !o)} className={`${iconBtn} lg:hidden`} aria-expanded={mobileOpen} aria-label="Menu">
-              {mobileOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
-            </button>
           </div>
         </div>
 
-        {/* Mobile menu sheet */}
-        {mobileOpen && (
-          <nav className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line bg-ivory px-4 pb-6 pt-3 animate-fade-up lg:hidden" aria-label="Mobile">
-            <button onClick={() => go('voice_studio')} className="btn btn-accent btn-lg w-full">
-              <Mic className="h-5 w-5" aria-hidden /> {t.nav.assistant}
-            </button>
-            <div className="mt-3 grid gap-1">
-              {[{ id: 'home' as ChannelMode, label: t.nav.home, icon: Home }, ...primary].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => go(item.id)}
-                  aria-current={section === item.id ? 'page' : undefined}
-                  className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-base font-semibold ${section === item.id ? 'bg-white text-navy shadow-card' : 'text-navy hover:bg-white'}`}
-                >
-                  <item.icon className="h-5 w-5 text-teal-600" aria-hidden /> {item.label}
-                </button>
-              ))}
-            </div>
-            <p className="px-3 pb-2 pt-5 text-xs font-bold uppercase tracking-wider text-muted">{t.nav.more}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {modes.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => go(m.id)}
-                  className={`flex min-h-12 items-center gap-2 rounded-xl border p-3 text-left text-sm font-semibold ${current === m.id ? 'border-saffron bg-saffron-50 text-navy' : 'border-line bg-white text-navy'}`}
-                >
-                  <m.icon className="h-4 w-4 shrink-0 text-saffron-600" aria-hidden />
-                  {m.label}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => {
-                onOpenProfile();
-                setMobileOpen(false);
-              }}
-              className="btn btn-primary btn-lg mt-4 w-full"
-            >
-              <User className="h-4 w-4" aria-hidden />
-              {profileName || t.profile}
-            </button>
-            {authEnabled && (
-              <button onClick={signOut} className="btn btn-outline btn-lg mt-2 w-full sm:hidden">
-                <LogOut className="h-4 w-4" aria-hidden /> Sign out
-              </button>
-            )}
-          </nav>
-        )}
       </header>
+
+      <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} current={current} onNavigate={onNavigate} language={language} profileName={profileName} onOpenProfile={onOpenProfile} />
 
       {/* Mobile bottom navigation: the five most-used destinations, icon + label */}
       <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">

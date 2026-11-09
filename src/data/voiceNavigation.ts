@@ -40,3 +40,32 @@ export function detectNavIntent(text: string): ChannelMode | null {
 
 /** "Fill it in Smart Apply": the application should be filled on the Smart Apply page, not in the conversation. */
 export const wantsSmartApplyPage = (text: string) => PAGES[0].names.test(text || '');
+
+/** Everyday words that point at a page without naming it ("money for my shop" → loans). Used by the pop-up menu's AI search. */
+const HINTS: Partial<Record<ChannelMode, RegExp>> = {
+  schemes: /benefit|subsid|pension|government|sarkari|scholarship|eligib|सरकारी|पेंशन|अनुदान|அரசு|ஓய்வூதிய|ప్రభుత్వ|ಸರ್ಕಾರ|സർക്കാർ|সরকারি|સરકારી|ਸਰਕਾਰੀ|ସରକାରୀ|سرکاری/i,
+  loans: /money|borrow|credit|emi|bank|finance|mudra|पैसा|पैसे|उधार|बैंक|பணம்|வங்கி|డబ్బు|బ్యాంక్|ಹಣ|ಬ್ಯಾಂಕ್|പണം|ബാങ്ക്|টাকা|ব্যাংক|પૈસા|બેંક|ਪੈਸੇ|ਬੈਂਕ|ଟଙ୍କା|ବ୍ୟାଙ୍କ|پیسے|بینک/i,
+  enterprise: /business|enterprise|startup|start ?up|shop|trade|self.?employ|व्यवसाय|व्यापार|दुकान|उद्योग|தொழில்|வணிகம்|கடை|వ్యాపార|దుకాణ|ವ್ಯಾಪಾರ|ವ್ಯವಹಾರ|ಅಂಗಡಿ|ബിസിനസ്|വ്യാപാര|കട|ব্যবসা|দোকান|વ્યવસાય|વેપાર|દુકાન|ਕਾਰੋਬਾਰ|ਦੁਕਾਨ|ବ୍ୟବସାୟ|ଦୋକାନ|کاروبار|دکان/i,
+  skills: /career|roadmap|vacanc|employment|work|रोज़गार|रोजगार|करियर|வேலை|தொழில் பயிற்சி|ఉద్యోగ|ಉದ್ಯೋಗ|ജോലി|চাকরি|નોકરી|ਨੌਕਰੀ|ଚାକିରି|نوکری/i,
+  learning: /learn|study|python|tutor|lesson|certificate course|सीख|पढ़|கற்க|படி|నేర్చుక|చదువ|ಕಲಿ|ಓದ|പഠി|শিখ|পড়|શીખ|ભણ|ਸਿੱਖ|ਪੜ੍ਹ|ଶିଖ|ପଢ|سیکھ|پڑھ/i,
+  documents: /aadhaar|aadhar|pan card|passport|voter|ration|licen[cs]e|id card|proof|आधार|पैन|पासपोर्ट|राशन|ஆதார்|పాస్‌పోర్ట్|ఆధార్|ಆಧಾರ್|ആധാർ|আধার|આધાર|ਆਧਾਰ|ଆଧାର|آدھار/i,
+  smart_apply: /apply|application form|fill (the )?form|autofill|आवेदन करना|फॉर्म भर|விண்ணப்பிக்க|దరఖాస్తు చేయ|ಅರ್ಜಿ ಸಲ್ಲಿಸ|അപേക്ഷിക്ക|আবেদন করতে|અરજી કરવી|ਅਰਜ਼ੀ ਦੇਣ|ଆବେଦନ କରିବା|درخواست دینا/i,
+  applications: /status|draft|saved|my form|track|स्थिति|ड्राफ्ट|நிலை|స్థితి|ಸ್ಥಿತಿ|നില|অবস্থা|સ્થિતિ|ਸਥਿਤੀ|ସ୍ଥିତି|اسٹیٹس/i,
+  district_map: /near|nearby|district|centre|center|location|पास|नज़दीक|அருகில்|దగ్గర|ಹತ್ತಿರ|അടുത്ത|কাছে|નજીક|ਨੇੜੇ|ପାଖରେ|قریب/i,
+  ivr: /call|phone|dial|toll.?free|कॉल|फोन|அழை|ఫోన్|ಕರೆ|വിളി|কল|ફોન|ਕਾਲ|କଲ୍|کال/i,
+  voice_studio: /talk|speak|ask|voice|बात|बोल|பேச|మాట్లాడ|ಮಾತನಾಡ|സംസാരി|কথা|બોલ|ਬੋਲ|କଥା|بات/i,
+};
+
+/** Pages that fit what someone typed or said, best first (the pop-up menu's AI search; no "open" word needed). */
+export function matchPages(text: string): ChannelMode[] {
+  const t = (text || '').trim();
+  if (!t) return [];
+  const scored: Array<{ id: ChannelMode; score: number; order: number }> = [];
+  const ids = new Set<ChannelMode>([...PAGES.map((p) => p.id), ...(Object.keys(HINTS) as ChannelMode[])]);
+  [...ids].forEach((id, order) => {
+    const named = PAGES.find((p) => p.id === id)?.names.test(t) ? 3 : 0;
+    const hinted = HINTS[id]?.test(t) ? 1 : 0;
+    if (named + hinted > 0) scored.push({ id, score: named + hinted, order });
+  });
+  return scored.sort((a, b) => b.score - a.score || a.order - b.order).map((s) => s.id);
+}

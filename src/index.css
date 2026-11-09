@@ -408,7 +408,9 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 /* ───────────────────────────────────────────────────────────
    Easy mode: bigger text and buttons, fewer elements (.easy-hide)
    ─────────────────────────────────────────────────────────── */
-html[data-easy="on"] { font-size: 125%; }
+html[data-easy="on"] { font-size: 112.5%; }
+@media (min-width: 640px) { html[data-easy="on"] { font-size: 125%; } }
+html[data-easy="on"] #root, html[data-easy="on"] main { overflow-wrap: anywhere; }
 html[data-easy="on"] .easy-hide { display: none !important; }
 html[data-easy="on"] .btn { min-height: 3.5rem; }
 html[data-easy="on"] .btn-sm { min-height: 3.25rem; }
@@ -485,3 +487,9 @@ html[data-theme="dark"] .mode-light .text-navy, html[data-theme="dark"] .mode-he
 html[data-theme="dark"] .mode-light .bg-white, html[data-theme="dark"] .mode-light .card, html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-hero { background-color: #fff; }
 html[data-theme="dark"] .mode-light .bg-navy { background-color: var(--color-navy); }
 html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-light .btn-outline { color: #0a1330; border-color: rgb(10 19 48 / 0.14); }
+@media (max-width: 639px) { html[data-easy="on"] header .gap-1\.5 { gap: 0.125rem; } html[data-easy="on"] header .gap-2\.5 { gap: 0.375rem; } }
+html[data-easy="on"] .btn { white-space: normal; text-align: center; line-height: 1.25; }
+html[data-easy="on"] header button span { white-space: nowrap; }
+/* Let hero columns shrink instead of pushing the card wider than the screen */
+.surface-dark .grid > * { min-width: 0; }
+html[data-easy="on"] main .surface-dark span.inline-flex { white-space: normal; }

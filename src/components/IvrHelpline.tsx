@@ -1417,7 +1417,7 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
                 <button
                   type="button"
                   onClick={initMicrophoneStream}
-                  className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] border border-slate-700 flex items-center gap-1 transition"
+                  className="min-h-11 px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-slate-700 flex items-center gap-1 transition"
                 >
                   <Mic className="w-3 h-3 text-amber-400" />
                   <span>{hasMicPermission ? 'Test Voice' : 'Connect Mic'}</span>
@@ -1429,7 +1429,7 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
                 onClick={() => handleStartCall()}
                 className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition transform active:scale-95"
               >
-                <PhoneCall className="w-4 h-4" />
+                <PhoneCall className="w-4 h-4 shrink-0" />
                 <span>
                   {activeBranch.code === 'ta'
                     ? 'Dial 1800-11-2529 (நேரடி உதவி மையம் - தமிழ்)'
@@ -1440,22 +1440,22 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
               </button>
 
               {/* Quick Dial in specific languages */}
-              <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+              <div className="grid grid-cols-3 gap-1.5 text-xs">
                 <button
                   onClick={() => handleStartCall('3')}
-                  className="py-1.5 px-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-bold text-center transition"
+                  className="min-h-11 py-1.5 px-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-bold text-center transition"
                 >
                   Dial தமிழ் (3)
                 </button>
                 <button
                   onClick={() => handleStartCall('2')}
-                  className="py-1.5 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-center transition"
+                  className="min-h-11 py-1.5 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-center transition"
                 >
                   Dial हिन्दी (2)
                 </button>
                 <button
                   onClick={() => handleStartCall('1')}
-                  className="py-1.5 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-center transition"
+                  className="min-h-11 py-1.5 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-center transition"
                 >
                   Dial English (1)
                 </button>

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import type { Certificate } from '../../services/learnApi';
 import { pdfTitle, printElement } from '../../services/printDocument';
 import { UdaanOneLogo } from '../shell/SiteHeader';
@@ -12,6 +13,22 @@ export const verifyLink = (id: string) => `${window.location.origin}/?verify=${i
 
 /** A small L-shaped ornament for each corner of the frame. */
 const Corner: React.FC<{ at: string }> = ({ at }) => <span aria-hidden className={`pointer-events-none absolute h-7 w-7 border-gold ${at}`} />;
+
+/** The public verify link as a real QR code (generated here, nothing leaves the device). */
+const VerifyQr: React.FC<{ id: string }> = ({ id }) => {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let live = true;
+    QRCode.toString(verifyLink(id), { type: 'svg', margin: 0, errorCorrectionLevel: 'M', color: { dark: '#0a1330', light: '#ffffff' } })
+      .then((s) => live && setSvg(s))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  if (!svg) return null;
+  return <span role="img" aria-label="QR code to check this certificate" className="cert-qr block h-[72px] w-[72px] rounded-lg bg-white p-1 shadow-[0_0_0_1px_rgb(10_19_48/0.12)] [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />;
+};
 
 export const CertificateCard: React.FC<{ cert: Certificate; officialRoute?: { label: string; url: string } }> = ({ cert, officialRoute }) => (
   <article className="print-certificate relative mx-auto w-full max-w-3xl overflow-hidden rounded-[22px] border-[6px] border-double border-gold bg-[#fffdf7] p-6 text-center text-navy shadow-card sm:p-10" aria-label="Certificate">
@@ -65,11 +82,14 @@ export const CertificateCard: React.FC<{ cert: Certificate; officialRoute?: { la
         </div>
       </div>
 
-      <p translate="no" className="cert-small mt-6 text-xs text-muted">
+      <div className="mt-6 flex items-center justify-center gap-4">
+        <VerifyQr id={cert.id} />
+        <p translate="no" className="cert-small text-left text-xs text-muted">
         Certificate ID <span className="font-mono font-semibold tracking-wider text-navy">{cert.id}</span>
-        <span className="mx-2">·</span>
+        <br />
         Check it at <span className="whitespace-nowrap font-mono font-semibold text-navy">{verifyLink(cert.id).replace(/^https?:\/\//, '')}</span>
-      </p>
+        </p>
+      </div>
       <p className="mx-auto mt-3 max-w-xl text-[10.5px] leading-relaxed text-muted">
         A UDAAN ONE learning certificate for completing this course and its assessment. It is not an NSQF, Sector Skill Council or government certification.
         {officialRoute && ` For the official certification: ${officialRoute.label}.`}
@@ -93,6 +113,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .print-certificate .cert-meta { font-size: 15px; }
 .print-certificate .cert-seal { width: 92px; height: 92px; }
 .print-certificate .cert-shine { display: none; }
+.print-certificate .cert-qr { width: 84px; height: 84px; }
 `;
 
 /** Prints just this certificate, on one A4 landscape page. */

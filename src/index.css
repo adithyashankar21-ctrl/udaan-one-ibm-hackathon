@@ -459,3 +459,29 @@ html[data-theme="dark"] .tint-gold { background: linear-gradient(160deg, rgb(255
 html[data-theme="dark"] .skeleton { background: linear-gradient(90deg, #1a2650 0px, #243264 160px, #1a2650 320px); background-size: 800px 100%; }
 html[data-theme="dark"] main[data-section="schemes"] { --sec-glow: rgb(255 153 51 / 0.12); }
 html[data-theme="dark"] .surface-dark { background-color: #0a1330; }
+
+/* Access-mode screens (kiosk, WhatsApp, IVR, map) are light islands: inside dark mode they keep the light tokens */
+html[data-theme="dark"] .mode-light, html[data-theme="dark"] .mode-hero {
+  color-scheme: light;
+  --color-ink: #0a1330;
+  --color-muted: #55607a;
+  --color-line: #e6e2d8;
+  --color-navy-50: #eef1f8;
+  --color-navy-700: #26355a;
+  --color-ivory-200: #ece8df;
+  --color-saffron-50: #fff3e5;
+  --color-saffron-600: #a85a00;
+  --color-teal-50: #e6faf6;
+  --color-teal-600: #0b7a6e;
+  --color-violet-50: #ece9fd;
+  --color-violet-600: #5342d4;
+  --color-gold-50: #fff2cf;
+  --color-gold-600: #7a5800;
+  --color-coral-50: #ffe8e5;
+  --color-coral-600: #b73232;
+  --shadow-card: 0 1px 2px rgb(10 19 48 / 0.05), 0 8px 24px -12px rgb(10 19 48 / 0.10);
+}
+html[data-theme="dark"] .mode-light .text-navy, html[data-theme="dark"] .mode-hero .text-navy, html[data-theme="dark"] .mode-light .text-navy\/80 { color: #0a1330; }
+html[data-theme="dark"] .mode-light .bg-white, html[data-theme="dark"] .mode-light .card, html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-hero { background-color: #fff; }
+html[data-theme="dark"] .mode-light .bg-navy { background-color: var(--color-navy); }
+html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-light .btn-outline { color: #0a1330; border-color: rgb(10 19 48 / 0.14); }

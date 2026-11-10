@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 
-const SEEN_KEY = 'udaan-welcome-seen';
-
-/** Only on the first visit of a session, never on a shared verify link, and never for people who asked for less motion or saved data. */
+/** Every time the app opens or is refreshed; never on a shared verify link, nor for people who asked for less motion or saved data. */
 function shouldShow(): boolean {
   try {
     if (typeof window === 'undefined') return false;
@@ -11,7 +9,7 @@ function shouldShow(): boolean {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
     if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return false;
     if (document.documentElement.dataset.motion === 'reduce') return false;
-    return sessionStorage.getItem(SEEN_KEY) !== '1';
+    return true;
   } catch {
     return true;
   }
@@ -38,11 +36,6 @@ export const WelcomeSplash: React.FC = () => {
 
   const finish = useCallback(() => {
     setLeaving(true);
-    try {
-      sessionStorage.setItem(SEEN_KEY, '1');
-    } catch {
-      /* private mode: it just shows again next time */
-    }
     window.setTimeout(() => setOpen(false), 650);
   }, []);
 

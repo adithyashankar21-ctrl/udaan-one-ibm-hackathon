@@ -686,7 +686,7 @@ export default function App() {
             <div className="flex items-center gap-2.5">
               <UdaanOneLogo className="h-9 w-9" />
               <span className="text-base font-extrabold text-navy">
-                UDAAN <span className="text-teal-600">ONE</span>
+                UDAAN <span className="text-saffron-600">ONE</span>
               </span>
             </div>
             <p className="mt-3 font-semibold text-navy">AI for Opportunity. Technology for All.</p>

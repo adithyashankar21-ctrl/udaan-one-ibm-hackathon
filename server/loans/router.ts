@@ -15,7 +15,7 @@ import { IngestError, checkFiles } from '../autofill/ingest';
 import { latin } from '../autofill/pdf';
 import { LOAN_CATEGORIES } from '../../src/data/loanCatalog';
 import { fraudFlags } from '../../src/data/loanAdvice';
-
+import { embedLogo } from '../brandLogo';
 function limiter(limit: number, windowMs: number) {
   const hits = new Map<string, number[]>();
   return (key: string) => {
@@ -437,8 +437,11 @@ async function businessPlanPdf(plan: any, name: string): Promise<Uint8Array> {
   };
 
   page.drawRectangle({ x: 0, y: H - 64, width: W, height: 64, color: NAVY });
-  page.drawText('UDAAN ONE', { x: M, y: H - 30, size: 16, font: bold, color: rgb(1, 1, 1) });
-  page.drawText('Business plan for a loan application', { x: M, y: H - 47, size: 9, font, color: rgb(0.85, 0.87, 0.9) });
+  const logo = await embedLogo(pdf);
+  const tx = logo ? M + 50 : M;
+  if (logo) page.drawImage(logo, { x: M, y: H - 58, width: 46, height: 46 });
+  page.drawText('UDAAN ONE', { x: tx, y: H - 30, size: 16, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('Business plan for a loan application', { x: tx, y: H - 47, size: 9, font, color: rgb(0.85, 0.87, 0.9) });
   y = H - 92;
   para(String(plan.title || 'Business plan'), 15, bold);
   if (name) para(`Prepared for: ${name}`, 9, font, MUTED);

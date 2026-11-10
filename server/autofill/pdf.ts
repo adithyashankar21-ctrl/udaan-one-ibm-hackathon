@@ -28,7 +28,7 @@ import { LENDER_TYPE_LABEL, emi, formatRupees, rateFor } from '../../src/data/lo
 import type { Generate } from './ocr';
 import type { DraftView, FieldView } from './mapping';
 import type { ApplicantPhoto, OfficialForm, Placement } from './types';
-
+import { embedLogo } from '../brandLogo';
 /* ── Text safety: the standard PDF fonts only cover Latin-1 ───────────── */
 
 export function latin(text: string): { text: string; lossy: boolean } {
@@ -118,10 +118,13 @@ export async function generateDraftPdf(view: DraftView, opts: { aadhaarFull?: st
   // Header
   page.drawRectangle({ x: 0, y: H - 70, width: W, height: 70, color: NAVY });
   page.drawRectangle({ x: 0, y: H - 74, width: W, height: 4, color: SAFFRON });
+  const logo = await embedLogo(pdf);
+  const tx = logo ? M + 54 : M;
+  if (logo) page.drawImage(logo, { x: M, y: H - 62, width: 48, height: 48 });
   y = H - 32;
-  text('UDAAN ONE', M, 18, bold, rgb(1, 1, 1));
+  text('UDAAN ONE', tx, 18, bold, rgb(1, 1, 1));
   y = H - 50;
-  text('AI for Opportunity. Technology for All.', M, 9, font, rgb(0.85, 0.87, 0.9));
+  text('AI for Opportunity. Technology for All.', tx, 9, font, rgb(0.85, 0.87, 0.9));
   y = H - 100;
 
   // Photo box, top right: 35 x 45 mm

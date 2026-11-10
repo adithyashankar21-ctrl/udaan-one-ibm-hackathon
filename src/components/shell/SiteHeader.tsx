@@ -71,13 +71,9 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
-/** Brand mark: a "U" whose right arm lifts into a wing — "udaan" (flight). */
+/** The official UDAAN ONE mark: a "U" whose ribbon lifts into a paper-plane arrow ("udaan" means flight). */
 export const UdaanOneLogo: React.FC<{ className?: string }> = ({ className = 'w-10 h-10' }) => (
-  <svg viewBox="0 0 40 40" className={className} aria-hidden>
-    <rect width="40" height="40" rx="12" fill="#0A1330" />
-    <path d="M11.5 11v11a8.5 8.5 0 0 0 17 0V11" fill="none" stroke="#FF9933" strokeWidth="3.2" strokeLinecap="round" />
-    <path d="M28.5 11c1.8-3 4.4-4.5 7.5-4.7M28.5 16c1.4-2 3.2-3.1 5.4-3.4" fill="none" stroke="#2DD4BF" strokeWidth="2.4" strokeLinecap="round" />
-  </svg>
+  <img src="/logo-mark.png" alt="" width={256} height={256} decoding="async" draggable={false} className={`${className} rounded-[22%] object-cover`} />
 );
 
 /** Which primary item a screen belongs to (e.g. Start a business lives under Skills & Opportunities). */
@@ -154,7 +150,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
             <UdaanOneLogo className="h-10 w-10 shrink-0" />
             <span className="min-w-0 leading-tight">
               <span className="block font-display text-[17px] font-semibold tracking-[-0.02em] text-navy">
-                UDAAN <span className="text-teal-600">ONE</span>
+                UDAAN <span className="text-saffron-600">ONE</span>
               </span>
               <span translate="no" className="easy-hide hidden truncate whitespace-nowrap text-xs font-normal text-muted sm:block">AI for Opportunity. Technology for All.</span>
             </span>

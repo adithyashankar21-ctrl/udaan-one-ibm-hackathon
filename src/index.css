@@ -340,7 +340,7 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
    saffron / green washes — so the same markup reads as the rest of the
    app. Solid buttons keep their colour and white text.
    ─────────────────────────────────────────────────────────── */
-.mode-light {
+html:not([data-theme="dark"]) .mode-light {
   --color-slate-950: #f7f5ef;
   --color-slate-900: #ffffff;
   --color-slate-800: #f4f6fa;
@@ -386,15 +386,15 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
   color: var(--color-navy);
 }
 /* White text was written for dark panels: on the light design it is navy, except on solid buttons and bars */
-.mode-light .text-white { color: var(--color-navy); }
-.mode-light .text-white:is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-indigo-5"], [class*="bg-indigo-6"], [class*="bg-blue-5"], [class*="bg-blue-6"], [class*="bg-sky-5"], [class*="bg-sky-6"], [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-green"], [class*="bg-teal"], [class*="bg-navy"], [class*="bg-[#008069]"], [class*="from-emerald"], [class*="from-indigo"], [class*="from-blue"]),
-.mode-light :is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-rose-5"], [class*="bg-rose-6"], [class*="bg-[#008069]"]) .text-white { color: #fff; }
+html:not([data-theme="dark"]) .mode-light .text-white { color: var(--color-navy); }
+html:not([data-theme="dark"]) .mode-light .text-white:is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-indigo-5"], [class*="bg-indigo-6"], [class*="bg-blue-5"], [class*="bg-blue-6"], [class*="bg-sky-5"], [class*="bg-sky-6"], [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-green"], [class*="bg-teal"], [class*="bg-navy"], [class*="bg-[#008069]"], [class*="from-emerald"], [class*="from-indigo"], [class*="from-blue"]),
+html:not([data-theme="dark"]) .mode-light :is([class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-emerald-7"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-rose-5"], [class*="bg-rose-6"], [class*="bg-[#008069]"]) .text-white { color: #fff; }
 /* The darkest text shades were used on bright saffron / green surfaces: they stay dark */
-.mode-light :is(.text-slate-950, .text-slate-900, .text-slate-800) { color: var(--color-navy); }
+html:not([data-theme="dark"]) .mode-light :is(.text-slate-950, .text-slate-900, .text-slate-800) { color: var(--color-navy); }
 /* Glass panels (white at low opacity) were light-on-dark; on ivory they read as soft navy tints */
-.mode-light [class*="bg-white/5"], .mode-light [class*="bg-white/10"], .mode-light [class*="bg-white/["] { background-color: #ffffff; }
-.mode-light [class*="border-white/"] { border-color: var(--color-line, #e3e8f1); }
-.mode-light :is(.shadow-lg, .shadow-xl, .shadow-2xl) { box-shadow: 0 10px 30px -18px rgb(16 28 54 / 0.35); }
+html:not([data-theme="dark"]) .mode-light :is([class*="bg-white/5"], [class*="bg-white/10"], [class*="bg-white/["]) { background-color: #ffffff; }
+html:not([data-theme="dark"]) .mode-light [class*="border-white/"] { border-color: var(--color-line, #e3e8f1); }
+html:not([data-theme="dark"]) .mode-light :is(.shadow-lg, .shadow-xl, .shadow-2xl) { box-shadow: 0 10px 30px -18px rgb(16 28 54 / 0.35); }
 
 /* The header of each access mode */
 .mode-hero {
@@ -468,31 +468,43 @@ html[data-theme="dark"] .skeleton { background: linear-gradient(90deg, #1a2650 0
 html[data-theme="dark"] main[data-section="schemes"] { --sec-glow: rgb(255 153 51 / 0.12); }
 html[data-theme="dark"] .surface-dark { background-color: #0a1330; }
 
-/* Access-mode screens (kiosk, WhatsApp, IVR, map) are light islands: inside dark mode they keep the light tokens */
-html[data-theme="dark"] .mode-light, html[data-theme="dark"] .mode-hero {
-  color-scheme: light;
-  --color-ink: #0a1330;
-  --color-muted: #55607a;
-  --color-line: #e6e2d8;
-  --color-navy-50: #eef1f8;
-  --color-navy-700: #26355a;
-  --color-ivory-200: #ece8df;
-  --color-saffron-50: #fff3e5;
-  --color-saffron-600: #a85a00;
-  --color-teal-50: #e6faf6;
-  --color-teal-600: #0b7a6e;
-  --color-violet-50: #ece9fd;
-  --color-violet-600: #5342d4;
-  --color-gold-50: #fff2cf;
-  --color-gold-600: #7a5800;
-  --color-coral-50: #ffe8e5;
-  --color-coral-600: #b73232;
-  --shadow-card: 0 1px 2px rgb(10 19 48 / 0.05), 0 8px 24px -12px rgb(10 19 48 / 0.10);
+/* Access-mode screens (kiosk, WhatsApp, IVR, map): in dark mode they keep their own dark design, on the app's navy shades */
+html[data-theme="dark"] .mode-light {
+  --color-slate-950: #0a1330;
+  --color-slate-900: #121c42;
+  --color-slate-800: #1a2650;
+  --color-slate-700: #243264;
+  --color-slate-600: #34447c;
+  --color-slate-500: #6b7899;
+  --color-slate-400: #8d97b5;
+  --color-slate-300: #b3bcd4;
+  --color-slate-200: #cfd5e6;
+  --color-slate-100: #e4e8f3;
+  --color-slate-50: #f1f3fa;
+  /* Warm accents follow the brand saffron and gold, not orange-red */
+  --color-amber-950: #2a2012;
+  --color-amber-900: #3a2a14;
+  --color-amber-800: #5a3a12;
+  --color-amber-700: #e8821a;
+  --color-amber-600: #ff9933;
+  --color-amber-500: #ffa94d;
+  --color-amber-400: #ffb067;
+  --color-orange-950: var(--color-amber-950);
+  --color-orange-900: var(--color-amber-900);
+  --color-orange-800: var(--color-amber-800);
+  --color-orange-700: #e8821a;
+  --color-orange-600: #ff9933;
+  --color-orange-500: #ffa94d;
+  color: #eef0f8;
 }
-html[data-theme="dark"] .mode-light .text-navy, html[data-theme="dark"] .mode-hero .text-navy, html[data-theme="dark"] .mode-light .text-navy\/80 { color: #0a1330; }
-html[data-theme="dark"] .mode-light .bg-white, html[data-theme="dark"] .mode-light .card, html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-hero { background-color: #fff; }
-html[data-theme="dark"] .mode-light .bg-navy { background-color: var(--color-navy); }
-html[data-theme="dark"] .mode-light .field, html[data-theme="dark"] .mode-light .btn-outline { color: #0a1330; border-color: rgb(10 19 48 / 0.14); }
+/* The WhatsApp screen in its dark theme: dark wallpaper, green sent bubbles, quiet bars */
+html[data-theme="dark"] .mode-light [class*="bg-[#efeae2]"] { background-color: #0b141a; }
+html[data-theme="dark"] .mode-light [class*="bg-[#f0f2f5]"] { background-color: #121c42; }
+html[data-theme="dark"] .mode-light [class*="bg-[#d9fdd3]"] { background-color: #0b5d4a; color: #eef0f8; }
+html[data-theme="dark"] .mode-light [class*="bg-[#fff5c4]"] { background-color: rgb(255 200 87 / 0.14); color: #ffd98a; }
+html[data-theme="dark"] .mode-hero { background: #121c42; border-color: rgb(255 255 255 / 0.1); }
+html[data-theme="dark"] .mode-hero [class*="bg-white/"] { background-color: rgb(255 255 255 / 0.08); }
+html[data-theme="dark"] .mode-hero [class*="ring-line"] { --tw-ring-color: rgb(255 255 255 / 0.14); }
 @media (max-width: 639px) { html[data-easy="on"] header .gap-1\.5 { gap: 0.125rem; } html[data-easy="on"] header .gap-2\.5 { gap: 0.375rem; } }
 html[data-easy="on"] .btn { white-space: normal; text-align: center; line-height: 1.25; }
 html[data-easy="on"] header button span { white-space: nowrap; }

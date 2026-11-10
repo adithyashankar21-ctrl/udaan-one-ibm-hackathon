@@ -685,7 +685,7 @@ const LearnAnything: React.FC<{ speechLocale: string; building: string | null; e
   const [topic, setTopic] = useState('');
   const dictation = useDictation(speechLocale, (t) => setTopic(t));
   return (
-    <section id="learn-anything" aria-labelledby="learn-anything-h" className="scroll-mt-28 rounded-[24px] border border-line bg-gradient-to-br from-saffron-50 via-white to-teal-50 p-5 sm:p-7">
+    <section id="learn-anything" aria-labelledby="learn-anything-h" className="scroll-mt-28 rounded-[24px] border border-line learn-hero p-5 sm:p-7">
       <p className="eyebrow flex items-center gap-2">
         <Wand2 className="h-4 w-4" aria-hidden /> Learn anything
       </p>

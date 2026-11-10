@@ -9,6 +9,7 @@ import { DocumentStep, type Preview } from './DocumentStep';
 import { MissingQuestions, type AnswerOutcome } from './MissingQuestions';
 import { OutputStep } from './OutputStep';
 import { ReviewStep } from './ReviewStep';
+import { ReadinessPanel } from './ReadinessPanel';
 import { VOICE_COMMANDS, useDictation, useVoiceTurns, spokenYesNo } from './media';
 import { prefetchTranslations, spokenIn } from '../../services/translate';
 import { VoiceDocs } from './VoiceDocs';
@@ -631,6 +632,8 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
           />
         </div>
       </header>
+
+      <ReadinessPanel draft={draft} step={step} onGoTo={setStep} />
 
       {error && <Alert tone="danger" title={error} />}
 

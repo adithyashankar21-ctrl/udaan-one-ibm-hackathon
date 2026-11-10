@@ -6,7 +6,10 @@
 import crypto from 'crypto';
 import { PROFILE_FIELD_MAP, type ProfileKey } from '../../src/data/autofillSchema';
 import type { Candidate, FieldRecord, ProfileState } from './types';
+import { compareNames } from './names';
 import { normalise, normaliseDate, normaliseMoney } from './validate';
+
+const NAME_KEYS = new Set<ProfileKey>(['fullName', 'fatherSpouseName', 'motherName']);
 
 /** Comparable form of a value, so "RAMESH  Kumar" and "Ramesh Kumar" count as the same. */
 export function comparable(key: ProfileKey, value: string): string {
@@ -70,6 +73,22 @@ export function mergeCandidate(profile: ProfileState, key: ProfileKey, cand: Can
     return { changed: true, conflict: false };
   }
 
+  // Same person written slightly differently (initials, word order, a one-letter spelling
+  // difference): not a conflict to resolve. Keep the fuller spelling and remember the other
+  // one, so the applicant is warned that an office may notice.
+  if (NAME_KEYS.has(key) && existing.status !== 'confirmed' && cand.status !== 'confirmed' && compareNames(existing.value, cand.value) !== 'different') {
+    const fuller = cand.value.trim().length > existing.value.length;
+    const [keep, other] = fuller ? [cand, existing] : [existing, cand];
+    const otherLabel = fuller ? existing.sourceLabel : cand.sourceLabel;
+    const otherDoc = fuller ? existing.docId : cand.docId;
+    if (fuller) profile.fields[key] = { ...record(), corroboratedBy: existing.corroboratedBy, variants: existing.variants };
+    const rec = profile.fields[key]!;
+    if (!(rec.variants || []).some((v) => v.value === other.value.trim())) rec.variants = [...(rec.variants || []), { value: other.value.trim(), sourceLabel: otherLabel, docId: otherDoc }];
+    if (rank[keep.status] > rank[rec.status]) rec.status = keep.status;
+    rec.updatedAt = Date.now();
+    return { changed: true, conflict: false };
+  }
+
   if (cand.status === 'confirmed') {
     profile.fields[key] = record();
     profile.conflicts = profile.conflicts.filter((c) => c.key !== key);
@@ -129,6 +148,7 @@ export function resolveConflict(profile: ProfileState, conflictId: string, choic
 export function forgetDocument(profile: ProfileState, docId: string) {
   for (const [k, f] of Object.entries(profile.fields)) {
     if (f && f.docId === docId && f.status !== 'confirmed') delete profile.fields[k as ProfileKey];
+    else if (f?.variants) f.variants = f.variants.filter((v) => v.docId !== docId);
   }
   for (const c of profile.conflicts) c.candidates = c.candidates.filter((x) => x.docId !== docId);
   profile.conflicts = profile.conflicts.filter((c) => c.candidates.length > 1);

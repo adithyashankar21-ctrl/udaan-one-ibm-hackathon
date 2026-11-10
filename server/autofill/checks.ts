@@ -5,7 +5,7 @@
  * requirements. These checks cannot prove a document is genuine — the office does that.
  */
 import { DOC_KINDS, PROFILE_FIELD_MAP, type DocKind, type ProfileKey } from '../../src/data/autofillSchema';
-import { comparable } from './profile';
+import { compareNames } from './names';
 import type { DocCheck, DocumentRecord, ProfileState } from './types';
 import { normaliseDate } from './validate';
 
@@ -41,29 +41,7 @@ const PAN_HOLDER: Record<string, string> = {
 /** Kinds whose expiry should be printed, and how much validity many applications expect. */
 const EXPIRING: Partial<Record<DocKind, number>> = { passport: 182, foreign_passport: 182, dl: 0 };
 
-const HONORIFICS = new Set(['mr', 'mrs', 'ms', 'miss', 'smt', 'shri', 'sri', 'kumari', 'km', 'dr', 'late']);
-
-function nameTokens(name: string): string[] {
-  return comparable('fullName', name)
-    .split(' ')
-    .filter((t) => t && !HONORIFICS.has(t));
-}
-
-/** same: identical words; similar: initials or a missing middle name; different: otherwise. */
-export function compareNames(a: string, b: string): 'same' | 'similar' | 'different' {
-  const x = nameTokens(a);
-  const y = nameTokens(b);
-  if (!x.length || !y.length) return 'different';
-  if ([...x].sort().join(' ') === [...y].sort().join(' ')) return 'same';
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  const pool = [...long];
-  for (const t of short) {
-    const i = pool.findIndex((p) => p === t || (t.length === 1 && p.startsWith(t)) || (p.length === 1 && t.startsWith(p)));
-    if (i < 0) return 'different';
-    pool.splice(i, 1);
-  }
-  return 'similar';
-}
+export { compareNames };
 
 export function checkDocument(doc: DocumentRecord, profile: ProfileState, now = Date.now()): DocCheck[] {
   const checks: DocCheck[] = [];

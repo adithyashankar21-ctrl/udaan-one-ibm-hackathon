@@ -19,6 +19,8 @@ export interface FieldRecord {
   confidence?: number;
   /** Other sources that gave the same value. */
   corroboratedBy?: string[];
+  /** Names only: the same person written a little differently elsewhere (initials, spelling). */
+  variants?: Array<{ value: string; sourceLabel: string; docId?: string }>;
   /** Aadhaar only: whether the full number passed the Verhoeff checksum when read. */
   checksumOk?: boolean;
   updatedAt: number;

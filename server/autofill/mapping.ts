@@ -8,7 +8,7 @@ import { DOCUMENT_SERVICES } from '../../src/data/documentServices';
 import { SCHEME_CATALOG } from '../../src/data/schemeCatalog';
 import { LOAN_PRODUCTS, emi, formatRupees, loanDetails, rateFor } from '../../src/data/loanCatalog';
 import { cannotMeet, checkDocument, isUsable } from './checks';
-import type { DocCheck, DocumentRecord, Draft, FieldRecord, SessionData } from './types';
+import type { Conflict, DocCheck, DocumentRecord, Draft, FieldRecord, SessionData } from './types';
 import { ageFromDob, checkValue, normaliseMoney } from './validate';
 import { eligibilityFor, schemeInfo } from './schemes';
 
@@ -29,6 +29,7 @@ export interface FieldView {
   status?: FieldRecord['status'];
   confidence?: number;
   corroboratedBy?: string[];
+  variants?: Array<{ value: string; sourceLabel: string; docId?: string }>;
   checksumOk?: boolean;
   issues: string[];
   question?: string;
@@ -110,6 +111,7 @@ export function buildFields(session: SessionData, draft: Draft): FieldView[] {
       status: rec?.status,
       confidence: rec?.confidence,
       corroboratedBy: rec?.corroboratedBy,
+      variants: rec?.variants,
       checksumOk: rec?.checksumOk,
       issues,
       question: spec.question || def?.question,
@@ -336,6 +338,59 @@ function loanRisks(schemeId: string, fields: FieldView[], documents: Requirement
   return risks.sort((a, b) => order[a.level] - order[b.level]).slice(0, 10);
 }
 
+/**
+ * Rejection predictor for schemes (not loans): what an office usually bounces a form for —
+ * the same detail differing between two documents, missing or unusable papers, an Aadhaar
+ * number that fails its check digit, low-confidence scans, a missing photo, or an answer
+ * that rules the person out.
+ */
+function schemeRisks(
+  fields: FieldView[],
+  documents: RequirementView[],
+  conflicts: Conflict[],
+  photoOk: boolean,
+  eligibility: ReturnType<typeof eligibilityFor>
+): LoanRisk[] {
+  const risks: LoanRisk[] = [];
+  const label = (k: string) => fields.find((f) => f.key === k)?.label || k;
+  for (const c of conflicts) {
+    const seen = c.candidates.map((x) => `${x.sourceLabel || 'a document'}: ${x.value}`).slice(0, 3).join(' · ');
+    risks.push({
+      level: 'high',
+      title: `${label(c.key)} is different in your documents (${seen})`,
+      fix: 'Choose the correct one in the details step. Offices reject forms whose details do not match the documents.',
+    });
+  }
+  for (const d of documents.filter((x) => x.required && !x.have)) {
+    risks.push({ level: d.manual ? 'medium' : 'high', title: `Missing: ${d.label}`, fix: d.manual ? d.note || 'Bring it to the office.' : 'Upload it here, or carry the original to the office.' });
+  }
+  for (const d of documents) {
+    for (const r of d.rejected) risks.push({ level: 'high', title: `${r.label} cannot be used: ${r.reason}`, fix: `Upload a different ${d.label.toLowerCase()}.` });
+    for (const w of d.warnings) risks.push({ level: 'medium', title: w, fix: 'Sort this out before you go to the office.' });
+  }
+  for (const f of fields) {
+    if (f.variants?.length) {
+      const others = f.variants.map((v) => `${v.sourceLabel}: ${v.value}`).join(' · ');
+      risks.push({
+        level: 'medium',
+        title: `${f.label} is written differently on your documents (${f.sourceLabel}: ${f.value} · ${others})`,
+        fix: 'Use the spelling on your Aadhaar. If the other document is shorter or spelled differently, carry both originals, or ask for a name-correction letter.',
+      });
+    }
+    if (f.checksumOk === false) risks.push({ level: 'high', title: `${f.label} does not look valid`, fix: 'Check each digit against your card. A wrong number is rejected straight away.' });
+    else if (!conflicts.some((c) => c.key === f.key)) for (const issue of f.issues) risks.push({ level: 'medium', title: `${f.label}: ${issue}`, fix: 'Check this answer and correct it if it is wrong.' });
+  }
+  const unsure = fields.filter((f) => f.state === 'review').length;
+  if (unsure >= 3) risks.push({ level: 'medium', title: `${unsure} details were read from blurry scans`, fix: 'Check each one against the original, or upload a clearer photo.' });
+  if (!photoOk && !documents.some((d) => /photo/i.test(d.label) && d.required && !d.have)) risks.push({ level: 'medium', title: 'No usable passport-size photo yet', fix: 'Add a clear, front-facing photo in the documents step.' });
+  if (eligibility?.level === 'unlikely') {
+    risks.push({ level: 'high', title: 'You may not meet the eligibility rules', fix: eligibility.reasons.slice(0, 2).join(' ') || 'Check the scheme conditions before applying.' });
+  }
+  const order = { high: 0, medium: 1 };
+  const seen = new Set<string>();
+  return risks.filter((r) => (seen.has(r.title) ? false : (seen.add(r.title), true))).sort((a, b) => order[a.level] - order[b.level]).slice(0, 8);
+}
+
 export function fieldsHash(fields: FieldView[]): string {
   return crypto.createHash('sha256').update(JSON.stringify(fields.map((f) => [f.key, f.value]))).digest('hex');
 }
@@ -460,7 +515,7 @@ export function buildDraftView(session: SessionData, draft: Draft): DraftView {
     eligibility: eligibilityFor(draft.schemeId, session.profile),
     status,
     nextSteps,
-    risks: loanRisks(draft.schemeId, fields, documents),
+    risks: loan ? loanRisks(draft.schemeId, fields, documents) : schemeRisks(fields, documents, conflicts, photoOk, eligibilityFor(draft.schemeId, session.profile)),
     channels: draft.channels,
     updatedAt: draft.updatedAt,
   };

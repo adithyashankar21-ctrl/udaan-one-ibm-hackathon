@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, ScanLine, Sparkles, X } from 'lucide-react';
 import {
   BeneficiaryProfile,
@@ -14,22 +14,9 @@ import {
 } from './types';
 import { SiteHeader, UdaanOneLogo } from './components/shell/SiteHeader';
 import { HomePage } from './components/pages/HomePage';
-import { SchemesPage } from './components/pages/SchemesPage';
-import { SkillsPage } from './components/pages/SkillsPage';
-import { LearningHubPage } from './components/pages/LearningHubPage';
-import { EnterprisePage } from './components/pages/EnterprisePage';
-import { ApplicationsPage } from './components/pages/ApplicationsPage';
-import { DocumentsPage } from './components/pages/DocumentsPage';
-import { LoansPage } from './components/pages/LoansPage';
-import { VoiceStudio } from './components/VoiceStudio';
-import { KioskMode } from './components/KioskMode';
 import { WelcomeSplash } from './components/shell/WelcomeSplash';
-import { WhatsAppVoiceBot } from './components/WhatsAppVoiceBot';
-import { IvrHelpline } from './components/IvrHelpline';
-import { DistrictExplorer } from './components/DistrictExplorer';
 import { KaushalPatraModal } from './components/KaushalPatraModal';
 import { ProfileForm } from './components/ProfileForm';
-import { SmartApplyPage } from './components/smartapply/SmartApplyPage';
 import { HelplineResume } from './components/smartapply/HelplineResume';
 import { SUPPORTED_LANGUAGES } from './data/languages';
 import { AutoTranslate } from './components/AutoTranslate';
@@ -53,6 +40,22 @@ import { COURSE_MAP } from './data/learningTracks';
 import { setPrivateValues } from './services/translate';
 import { ROADMAP_INTENT_EVENT, loadLocalRoadmaps, mergeRoadmaps, saveLocalRoadmaps, type RoadmapRequest } from './services/roadmaps';
 import { ModeShell, isAccessMode } from './components/shell/ModeShell';
+import { PageLoading } from './components/ui/PageLoading';
+
+// Pages load when first opened, so the first screen arrives sooner on a slow connection
+const SchemesPage = lazy(() => import('./components/pages/SchemesPage').then((m) => ({ default: m.SchemesPage })));
+const SkillsPage = lazy(() => import('./components/pages/SkillsPage').then((m) => ({ default: m.SkillsPage })));
+const LearningHubPage = lazy(() => import('./components/pages/LearningHubPage').then((m) => ({ default: m.LearningHubPage })));
+const EnterprisePage = lazy(() => import('./components/pages/EnterprisePage').then((m) => ({ default: m.EnterprisePage })));
+const ApplicationsPage = lazy(() => import('./components/pages/ApplicationsPage').then((m) => ({ default: m.ApplicationsPage })));
+const DocumentsPage = lazy(() => import('./components/pages/DocumentsPage').then((m) => ({ default: m.DocumentsPage })));
+const LoansPage = lazy(() => import('./components/pages/LoansPage').then((m) => ({ default: m.LoansPage })));
+const VoiceStudio = lazy(() => import('./components/VoiceStudio').then((m) => ({ default: m.VoiceStudio })));
+const KioskMode = lazy(() => import('./components/KioskMode').then((m) => ({ default: m.KioskMode })));
+const WhatsAppVoiceBot = lazy(() => import('./components/WhatsAppVoiceBot').then((m) => ({ default: m.WhatsAppVoiceBot })));
+const IvrHelpline = lazy(() => import('./components/IvrHelpline').then((m) => ({ default: m.IvrHelpline })));
+const DistrictExplorer = lazy(() => import('./components/DistrictExplorer').then((m) => ({ default: m.DistrictExplorer })));
+const SmartApplyPage = lazy(() => import('./components/smartapply/SmartApplyPage').then((m) => ({ default: m.SmartApplyPage })));
 
 // Clean baseline profile for real citizen data entry
 const CLEAN_EMPTY_PROFILE: BeneficiaryProfile = {
@@ -503,6 +506,8 @@ export default function App() {
       )}
 
       <main id="main" data-section={({ schemes: 'schemes', loans: 'loans', skills: 'skills', learning: 'skills', enterprise: 'skills', documents: 'documents' } as Record<string, string>)[currentChannel]} className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:pt-8 lg:pb-12">
+        <Suspense fallback={<PageLoading />}>
+        <div key={currentChannel} className="page-enter">
         {currentChannel === 'home' && (
           <HomePage
             language={currentLanguage}
@@ -680,6 +685,8 @@ export default function App() {
             )}
           </ModeShell>
         )}
+        </div>
+        </Suspense>
       </main>
 
       <footer className="border-t border-line bg-white pb-20 lg:pb-0">

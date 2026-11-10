@@ -25,7 +25,7 @@ import { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
 import { authEnabled, signOut } from '../../services/supabase';
-import { AppMenu, MENU_WORD } from './AppMenu';
+import { AppMenu, rememberPage, MENU_WORD } from './AppMenu';
 
 interface SiteHeaderProps {
   current: ChannelMode;
@@ -128,6 +128,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, lan
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => rememberPage(current), [current]);
   const section = SECTION_OF[current] || current;
   const activeLang = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
 

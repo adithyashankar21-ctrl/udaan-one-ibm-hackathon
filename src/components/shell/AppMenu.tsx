@@ -1,10 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Check, ClipboardList, FileBadge, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Sparkles, Store, User } from 'lucide-react';
+import { BookOpen, Check, History, ClipboardList, FileBadge, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Sparkles, Store, User } from 'lucide-react';
 import type { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
 import { matchPages } from '../../data/voiceNavigation';
+
+const RECENT_KEY = 'udaan-recent-pages';
+
+/** Remember a page visit (most recent first, at most five), so the menu can offer to go back. */
+export function rememberPage(mode: ChannelMode) {
+  try {
+    const now: ChannelMode[] = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    const next = [mode, ...now.filter((m) => m !== mode)].slice(0, 5);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode: the menu just has no recents */
+  }
+}
+
+function readRecent(): ChannelMode[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
 
 /** The word "Menu" and the AI box's prompt, in each supported language (the rest is translated by AutoTranslate). */
 export const MENU_WORD: Record<LanguageCode, string> = {
@@ -101,6 +123,17 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
     [t],
   );
 
+  // Pages to pick up from: the last few visited, not the one already open, not Home (always in the list)
+  const recents = useMemo(() => {
+    if (!open) return [] as Item[];
+    const all = groups.flatMap((g) => g.items);
+    return readRecent()
+      .filter((id) => id !== current && id !== 'home')
+      .map((id) => all.find((i) => i.id === id))
+      .filter((i): i is Item => Boolean(i))
+      .slice(0, 3);
+  }, [open, groups, current]);
+
   const matches = useMemo(() => matchPages(query), [query]);
   const best = matches[0];
 
@@ -161,6 +194,33 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
   const searching = query.trim().length > 0;
   let row = 0;
 
+  const renderRow = (item: Item, prefix: string) => {
+
+                const active = current === item.id;
+                const isBest = item.id === best;
+                const dim = searching && matches.length > 0 && !matches.includes(item.id);
+                const delay = row++ * 18;
+                return (
+                  <button
+                    key={`${prefix}${item.id}`}
+                    onClick={() => go(item.id)}
+                    aria-current={active ? 'page' : undefined}
+                    style={{ animationDelay: `${delay}ms` }}
+                    className={`app-menu-row group flex min-h-11 w-full items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition-colors duration-150 animate-fade-up ${isBest ? 'bg-violet-50 ring-1 ring-violet/40' : active ? 'bg-white shadow-card' : 'hover:bg-white/80'} ${dim ? 'opacity-35' : ''}`}
+                  >
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${HUE[item.hue]}`}>
+                      <item.icon className="h-[18px] w-[18px]" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1 text-[0.95rem] font-semibold leading-snug text-navy">{item.label}</span>
+                    {isBest ? (
+                      <kbd className="rounded-md bg-white px-1.5 py-0.5 font-sans text-[11px] font-semibold text-violet-600">Enter</kbd>
+                    ) : (
+                      active && <Check className="h-4 w-4 shrink-0 text-teal-600" aria-label="Current page" />
+                    )}
+                  </button>
+                );
+                };
+
   return (
     <>
       {/* Click-away layer: a faint dim, no heavy overlay */}
@@ -205,34 +265,18 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
 
         {/* Options: one simple list, grouped by thin labels */}
         <div className="mt-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-0.5 pb-1">
+          {!searching && recents.length > 0 && (
+            <div role="group" aria-label="Pick up where you left off">
+              <p className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-muted">
+                <History className="h-3 w-3" aria-hidden /> Pick up where you left off
+              </p>
+              {recents.map((item) => renderRow(item, 'recent-'))}
+            </div>
+          )}
           {groups.map((g) => (
             <div key={g.title} role="group" aria-label={g.title}>
               <p className="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-muted">{g.title}</p>
-              {g.items.map((item) => {
-                const active = current === item.id;
-                const isBest = item.id === best;
-                const dim = searching && matches.length > 0 && !matches.includes(item.id);
-                const delay = row++ * 18;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => go(item.id)}
-                    aria-current={active ? 'page' : undefined}
-                    style={{ animationDelay: `${delay}ms` }}
-                    className={`app-menu-row group flex min-h-11 w-full items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition-colors duration-150 animate-fade-up ${isBest ? 'bg-violet-50 ring-1 ring-violet/40' : active ? 'bg-white shadow-card' : 'hover:bg-white/80'} ${dim ? 'opacity-35' : ''}`}
-                  >
-                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${HUE[item.hue]}`}>
-                      <item.icon className="h-[18px] w-[18px]" aria-hidden />
-                    </span>
-                    <span className="min-w-0 flex-1 text-[0.95rem] font-semibold leading-snug text-navy">{item.label}</span>
-                    {isBest ? (
-                      <kbd className="rounded-md bg-white px-1.5 py-0.5 font-sans text-[11px] font-semibold text-violet-600">Enter</kbd>
-                    ) : (
-                      active && <Check className="h-4 w-4 shrink-0 text-teal-600" aria-label="Current page" />
-                    )}
-                  </button>
-                );
-              })}
+              {g.items.map((item) => renderRow(item, ''))}
             </div>
           ))}
           {searching && !best && (

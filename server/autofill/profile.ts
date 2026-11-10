@@ -6,10 +6,18 @@
 import crypto from 'crypto';
 import { PROFILE_FIELD_MAP, type ProfileKey } from '../../src/data/autofillSchema';
 import type { Candidate, FieldRecord, ProfileState } from './types';
-import { compareNames } from './names';
+import { compareAddresses, compareDates, compareNames } from './names';
 import { normalise, normaliseDate, normaliseMoney } from './validate';
 
 const NAME_KEYS = new Set<ProfileKey>(['fullName', 'fatherSpouseName', 'motherName']);
+
+/** Same thing written a little differently (initials, a year-only date, a shorter address)? */
+function writtenAlike(key: ProfileKey, a: string, b: string): boolean {
+  if (NAME_KEYS.has(key)) return compareNames(a, b) !== 'different';
+  if (key === 'dateOfBirth') return compareDates(a, b, normaliseDate) === 'similar';
+  if (key === 'addressLine') return compareAddresses(a, b) !== 'different';
+  return false;
+}
 
 /** Comparable form of a value, so "RAMESH  Kumar" and "Ramesh Kumar" count as the same. */
 export function comparable(key: ProfileKey, value: string): string {
@@ -73,10 +81,10 @@ export function mergeCandidate(profile: ProfileState, key: ProfileKey, cand: Can
     return { changed: true, conflict: false };
   }
 
-  // Same person written slightly differently (initials, word order, a one-letter spelling
-  // difference): not a conflict to resolve. Keep the fuller spelling and remember the other
-  // one, so the applicant is warned that an office may notice.
-  if (NAME_KEYS.has(key) && existing.status !== 'confirmed' && cand.status !== 'confirmed' && compareNames(existing.value, cand.value) !== 'different') {
+  // The same name, date or address written slightly differently (initials, a one-letter spelling
+  // difference, only the year, a shorter address): not a conflict to resolve. Keep the fuller
+  // form and remember the other, so the applicant is warned that an office may notice.
+  if (existing.status !== 'confirmed' && cand.status !== 'confirmed' && writtenAlike(key, existing.value, cand.value)) {
     const fuller = cand.value.trim().length > existing.value.length;
     const [keep, other] = fuller ? [cand, existing] : [existing, cand];
     const otherLabel = fuller ? existing.sourceLabel : cand.sourceLabel;

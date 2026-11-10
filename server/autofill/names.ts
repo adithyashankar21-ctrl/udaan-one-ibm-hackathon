@@ -59,3 +59,58 @@ export function compareNames(a: string, b: string): 'same' | 'similar' | 'differ
   // Initials alone ("R" and "Ravi") say nothing: at least one whole word must really match
   return whole > 0 ? 'similar' : 'different';
 }
+
+/** Only the year is printed on some documents (Aadhaar often shows just "1991"). */
+const YEAR_ONLY = /^\s*((?:19|20)\d{2})\s*$/;
+
+/** same: one date; similar: one is only a year and it matches; different: otherwise. */
+export function compareDates(a: string, b: string, normalise: (v: string) => string | null): 'same' | 'similar' | 'different' {
+  const na = normalise(a);
+  const nb = normalise(b);
+  if (na && nb) return na === nb ? 'same' : 'different';
+  const ya = a.match(YEAR_ONLY)?.[1];
+  const yb = b.match(YEAR_ONLY)?.[1];
+  if (ya && nb && nb.endsWith(`/${ya}`)) return 'similar';
+  if (yb && na && na.endsWith(`/${yb}`)) return 'similar';
+  if (ya && yb) return ya === yb ? 'same' : 'different';
+  return 'different';
+}
+
+/** True when two dates are the same digits with day and month the other way round (03/04 and 04/03). */
+export function daysSwapped(a: string, b: string, normalise: (v: string) => string | null): boolean {
+  const na = normalise(a);
+  const nb = normalise(b);
+  if (!na || !nb || na === nb) return false;
+  const [da, ma, ya] = na.split('/');
+  const [db, mb, yb] = nb.split('/');
+  return da === mb && ma === db && ya === yb;
+}
+
+const ADDRESS_NOISE = new Set(['no', 'door', 'flat', 'house', 'plot', 'near', 'opp', 'opposite', 'post', 'po', 'via', 'the', 'of', 'dist', 'district', 'tq', 'taluk']);
+
+function addressTokens(v: string): string[] {
+  return v
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
+    .split(' ')
+    .filter((t) => t && !ADDRESS_NOISE.has(t));
+}
+
+/**
+ * Addresses are written many ways ("12, Gandhi St" and "12 Gandhi Street, Anna Nagar").
+ * similar: every number matches and most of the words of the shorter one are in the longer one.
+ */
+export function compareAddresses(a: string, b: string): 'same' | 'similar' | 'different' {
+  const x = addressTokens(a);
+  const y = addressTokens(b);
+  if (!x.length || !y.length) return 'different';
+  if ([...x].sort().join(' ') === [...y].sort().join(' ')) return 'same';
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  const canon = (t: string) => (/^(st|str|street)$/.test(t) ? 'street' : /^(rd|road)$/.test(t) ? 'road' : /^(nagar|ngr)$/.test(t) ? 'nagar' : t);
+  const longSet = new Set(long.map(canon));
+  const numbers = short.filter((t) => /\d/.test(t));
+  if (!numbers.every((n) => longSet.has(n))) return 'different';
+  const hit = short.filter((t) => longSet.has(canon(t))).length;
+  return short.length >= 3 && hit / short.length >= 0.8 ? 'similar' : 'different';
+}

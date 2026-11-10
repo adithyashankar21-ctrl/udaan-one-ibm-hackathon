@@ -9,7 +9,8 @@ import { SCHEME_CATALOG } from '../../src/data/schemeCatalog';
 import { LOAN_PRODUCTS, emi, formatRupees, loanDetails, rateFor } from '../../src/data/loanCatalog';
 import { cannotMeet, checkDocument, isUsable } from './checks';
 import type { Conflict, DocCheck, DocumentRecord, Draft, FieldRecord, SessionData } from './types';
-import { ageFromDob, checkValue, normaliseMoney } from './validate';
+import { ageFromDob, checkValue, normaliseDate, normaliseMoney } from './validate';
+import { daysSwapped } from './names';
 import { eligibilityFor, schemeInfo } from './schemes';
 
 export type FieldState = 'filled' | 'review' | 'missing' | 'conflict' | 'invalid';
@@ -355,10 +356,13 @@ function schemeRisks(
   const label = (k: string) => fields.find((f) => f.key === k)?.label || k;
   for (const c of conflicts) {
     const seen = c.candidates.map((x) => `${x.sourceLabel || 'a document'}: ${x.value}`).slice(0, 3).join(' · ');
+    const swapped = c.key === 'dateOfBirth' && c.candidates.length >= 2 && daysSwapped(c.candidates[0].value, c.candidates[1].value, normaliseDate);
     risks.push({
       level: 'high',
       title: `${label(c.key)} is different in your documents (${seen})`,
-      fix: 'Choose the correct one in the details step. Offices reject forms whose details do not match the documents.',
+      fix: swapped
+        ? 'The day and month look swapped between two documents. Check which is right on your Aadhaar, then correct the other document.'
+        : 'Choose the correct one in the details step. Offices reject forms whose details do not match the documents.',
     });
   }
   for (const d of documents.filter((x) => x.required && !x.have)) {
@@ -374,7 +378,12 @@ function schemeRisks(
       risks.push({
         level: 'medium',
         title: `${f.label} is written differently on your documents (${f.sourceLabel}: ${f.value} · ${others})`,
-        fix: 'Use the spelling on your Aadhaar. If the other document is shorter or spelled differently, carry both originals, or ask for a name-correction letter.',
+        fix:
+          f.key === 'dateOfBirth'
+            ? 'One document shows only the year. Use the full date from your Aadhaar and carry both originals.'
+            : f.key === 'addressLine'
+              ? 'Use the address on your Aadhaar on the form. If another document is written differently, carry it as proof of the same address.'
+              : 'Use the spelling on your Aadhaar. If the other document is shorter or spelled differently, carry both originals, or ask for a name-correction letter.',
       });
     }
     if (f.checksumOk === false) risks.push({ level: 'high', title: `${f.label} does not look valid`, fix: 'Check each digit against your card. A wrong number is rejected straight away.' });

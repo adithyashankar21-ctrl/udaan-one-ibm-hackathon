@@ -23,6 +23,7 @@ import { DocumentsPage } from './components/pages/DocumentsPage';
 import { LoansPage } from './components/pages/LoansPage';
 import { VoiceStudio } from './components/VoiceStudio';
 import { KioskMode } from './components/KioskMode';
+import { WelcomeSplash } from './components/shell/WelcomeSplash';
 import { WhatsAppVoiceBot } from './components/WhatsAppVoiceBot';
 import { IvrHelpline } from './components/IvrHelpline';
 import { DistrictExplorer } from './components/DistrictExplorer';
@@ -407,6 +408,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <AutoTranslate language={currentLanguage} />
+      <WelcomeSplash />
       {/* First visit: create the profile before entering the app */}
       {showProfileSetup && autofillSession && (
         <ProfileSetup

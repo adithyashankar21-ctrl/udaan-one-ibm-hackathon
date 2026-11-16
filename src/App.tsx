@@ -14,7 +14,6 @@ import {
 } from './types';
 import { SiteHeader, UdaanOneLogo } from './components/shell/SiteHeader';
 import { HomePage } from './components/pages/HomePage';
-import { WelcomeSplash } from './components/shell/WelcomeSplash';
 import { KaushalPatraModal } from './components/KaushalPatraModal';
 import { ProfileForm } from './components/ProfileForm';
 import { HelplineResume } from './components/smartapply/HelplineResume';
@@ -49,6 +48,8 @@ const LearningHubPage = lazy(() => import('./components/pages/LearningHubPage').
 const EnterprisePage = lazy(() => import('./components/pages/EnterprisePage').then((m) => ({ default: m.EnterprisePage })));
 const ApplicationsPage = lazy(() => import('./components/pages/ApplicationsPage').then((m) => ({ default: m.ApplicationsPage })));
 const DocumentsPage = lazy(() => import('./components/pages/DocumentsPage').then((m) => ({ default: m.DocumentsPage })));
+const FamilyPage = lazy(() => import('./components/pages/FamilyPage').then((m) => ({ default: m.FamilyPage })));
+const LetterHelpPage = lazy(() => import('./components/pages/LetterHelpPage').then((m) => ({ default: m.LetterHelpPage })));
 const LoansPage = lazy(() => import('./components/pages/LoansPage').then((m) => ({ default: m.LoansPage })));
 const VoiceStudio = lazy(() => import('./components/VoiceStudio').then((m) => ({ default: m.VoiceStudio })));
 const KioskMode = lazy(() => import('./components/KioskMode').then((m) => ({ default: m.KioskMode })));
@@ -411,7 +412,6 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <AutoTranslate language={currentLanguage} />
-      <WelcomeSplash />
       {/* First visit: create the profile before entering the app */}
       {showProfileSetup && autofillSession && (
         <ProfileSetup
@@ -505,7 +505,7 @@ export default function App() {
         </div>
       )}
 
-      <main id="main" data-section={({ schemes: 'schemes', loans: 'loans', skills: 'skills', learning: 'skills', enterprise: 'skills', documents: 'documents' } as Record<string, string>)[currentChannel]} className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:pt-8 lg:pb-12">
+      <main id="main" data-section={({ schemes: 'schemes', loans: 'loans', skills: 'skills', learning: 'skills', enterprise: 'skills', documents: 'documents', letters: 'documents', family: 'schemes' } as Record<string, string>)[currentChannel]} className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:pt-8 lg:pb-12">
         <Suspense fallback={<PageLoading />}>
         <div key={currentChannel} className="page-enter">
         {currentChannel === 'home' && (
@@ -552,6 +552,17 @@ export default function App() {
             onNavigate={setCurrentChannel}
           />
         )}
+
+        {currentChannel === 'family' && (
+          <FamilyPage
+            profile={userProfile}
+            langConfig={langConfig}
+            onApply={(schemeId, byVoice?: boolean) => openSmartApply({ schemeId, channel: byVoice ? 'voice' : undefined })}
+            onNavigate={setCurrentChannel}
+          />
+        )}
+
+        {currentChannel === 'letters' && <LetterHelpPage profile={userProfile} langConfig={langConfig} />}
 
         {currentChannel === 'skills' && (
           <SkillsPage

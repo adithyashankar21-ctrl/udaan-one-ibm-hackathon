@@ -255,6 +255,10 @@ export const autofillApi = {
   roadmaps: () => call<{ roadmaps: SavedRoadmap[] }>('/roadmaps').then((r) => r.roadmaps),
   saveRoadmap: (saved: SavedRoadmap) => call<{ roadmaps: SavedRoadmap[] }>('/roadmaps', { method: 'POST', json: saved }).then((r) => r.roadmaps),
   deleteRoadmap: (id: string) => call<{ roadmaps: SavedRoadmap[] }>(`/roadmaps/${id}`, { method: 'DELETE', json: {} }).then((r) => r.roadmaps),
+  /** The household for whole-family entitlements, kept with the account. */
+  household: () => call<{ household: import('../data/familySchemes').Household | null }>('/household').then((r) => r.household),
+  saveHousehold: (household: import('../data/familySchemes').Household) =>
+    call<{ household: import('../data/familySchemes').Household }>('/household', { method: 'POST', json: { household } }).then((r) => r.household),
   /** Schemes saved for later, kept with the account. */
   savedSchemes: () => call<{ ids: string[] }>('/saved-schemes').then((r) => r.ids),
   saveSavedSchemes: (ids: string[]) => call<{ ids: string[] }>('/saved-schemes', { method: 'POST', json: { ids } }).then((r) => r.ids),

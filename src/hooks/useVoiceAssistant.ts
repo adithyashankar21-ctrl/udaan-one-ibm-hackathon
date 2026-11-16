@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BeneficiaryProfile, Language } from '../types';
 import { aiService } from '../services/aiService';
+import { pauseBeforeDone } from '../services/speechPause';
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking' | 'paused';
 
@@ -11,8 +12,6 @@ export interface VoiceMessage {
 
 // How long to wait after the user stops before sending what they said. Once the browser
 // marks the phrase as finished, a short pause is enough; mid-phrase we wait longer.
-const SILENCE_AFTER_FINAL_MS = 900;
-const SILENCE_MID_PHRASE_MS = 1800;
 
 /**
  * Shared voice-first conversation loop: listen (waiting for the user to finish),
@@ -112,7 +111,7 @@ export function useVoiceAssistant(
       pendingRef.current = full;
       setLiveTranscript(full);
       clearSilence();
-      silenceTimerRef.current = setTimeout(commit, lastIsFinal ? SILENCE_AFTER_FINAL_MS : SILENCE_MID_PHRASE_MS);
+      silenceTimerRef.current = setTimeout(commit, pauseBeforeDone(full, !lastIsFinal));
     };
     rec.onerror = (event: any) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {

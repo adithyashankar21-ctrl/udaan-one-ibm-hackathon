@@ -149,6 +149,8 @@ export interface SessionData {
   learning?: { progress: string[]; courses: unknown[] };
   /** Schemes this person saved to look at later (scheme ids). */
   savedSchemes?: string[];
+  /** The person's household, for whole-family entitlements (src/data/familySchemes.ts). */
+  household?: import('../../src/data/familySchemes').Household;
   /** Career roadmaps made for this person, newest first. */
   roadmaps?: Array<{ id: string; createdAt: number; roadmap: unknown }>;
 }

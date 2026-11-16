@@ -21,6 +21,7 @@ import { CatalogScheme, EligibilityLevel, SCHEME_CATALOG, SchemeFilter, estimate
 import { FORM_SCHEMA_MAP } from '../../data/autofillSchema';
 import { ExploreTabs } from './DocumentsPage';
 import type { ChannelMode } from '../../types';
+import { pauseBeforeDone } from '../../services/speechPause';
 
 interface SchemesPageProps {
   profile: BeneficiaryProfile;
@@ -110,9 +111,21 @@ export const SchemesPage: React.FC<SchemesPageProps> = ({
     }
     const rec = new SR();
     rec.lang = langConfig.speechLocale || 'en-IN';
-    rec.interimResults = false;
-    rec.onresult = (e: any) => setQuery(e.results[0][0].transcript);
-    rec.onend = () => setListening(false);
+    // Words appear as they are heard; listening ends once the sentence sounds finished
+    rec.interimResults = true;
+    rec.continuous = true;
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    rec.onresult = (e: any) => {
+      const results = Array.from(e.results as ArrayLike<any>);
+      const text = results.map((r) => r[0].transcript).join(' ').replace(/\s+/g, ' ').trim();
+      setQuery(text);
+      clearTimeout(quiet);
+      quiet = setTimeout(() => rec.stop(), pauseBeforeDone(text, !results[results.length - 1]?.isFinal));
+    };
+    rec.onend = () => {
+      clearTimeout(quiet);
+      setListening(false);
+    };
     rec.onerror = () => setListening(false);
     recRef.current = rec;
     rec.start();

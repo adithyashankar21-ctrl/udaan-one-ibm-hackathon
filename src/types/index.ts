@@ -8,6 +8,8 @@ export type ChannelMode =
   | 'smart_apply'
   | 'documents'
   | 'loans'
+  | 'letters'
+  | 'family'
   | 'voice_studio'
   | 'kiosk'
   | 'whatsapp'

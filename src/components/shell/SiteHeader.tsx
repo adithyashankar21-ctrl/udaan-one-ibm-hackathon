@@ -77,7 +77,7 @@ export const UdaanOneLogo: React.FC<{ className?: string }> = ({ className = 'w-
 );
 
 /** Which primary item a screen belongs to (e.g. Start a business lives under Skills & Opportunities). */
-const SECTION_OF: Partial<Record<ChannelMode, ChannelMode>> = { enterprise: 'skills', learning: 'skills', documents: 'schemes' };
+const SECTION_OF: Partial<Record<ChannelMode, ChannelMode>> = { enterprise: 'skills', learning: 'skills', documents: 'schemes', letters: 'schemes', family: 'schemes' };
 
 export const SiteHeader: React.FC<SiteHeaderProps> = ({ current, onNavigate, language, onLanguageChange, profileName, onOpenProfile }) => {
   const t = getShellStrings(language);

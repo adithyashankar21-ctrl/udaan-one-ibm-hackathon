@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Check, History, ClipboardList, FileBadge, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Sparkles, Store, User } from 'lucide-react';
+import { BookOpen, Check, History, ClipboardList, FileBadge, MailOpen, GraduationCap, Home, IndianRupee, Landmark, MapPin, MessageSquare, Mic, PhoneCall, Rocket, ScanLine, Sparkles, Store, User, Users } from 'lucide-react';
 import type { ChannelMode, LanguageCode } from '../../types';
 import { SUPPORTED_LANGUAGES } from '../../data/languages';
 import { getShellStrings } from '../../data/uiStrings';
 import { matchPages } from '../../data/voiceNavigation';
+import { pauseBeforeDone } from '../../services/speechPause';
 
 const RECENT_KEY = 'udaan-recent-pages';
 
@@ -95,11 +96,13 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
         items: [
           { id: 'home', label: t.nav.home, desc: 'Your dashboard', icon: Home, hue: 'navy' },
           { id: 'schemes', label: t.nav.schemes, desc: 'Government schemes that fit you', icon: Landmark, hue: 'saffron' },
+          { id: 'family', label: 'Family benefits', desc: 'Every benefit for every person at home', icon: Users, hue: 'saffron' },
           { id: 'loans', label: t.nav.loans, desc: 'Compare government and bank loans', icon: IndianRupee, hue: 'teal' },
           { id: 'skills', label: t.nav.skills, desc: 'Training, jobs and career roadmaps', icon: GraduationCap, hue: 'violet' },
           { id: 'enterprise', label: t.nav.enterprise, desc: 'Loans, grants and a plan for your trade', icon: Rocket, hue: 'teal' },
           { id: 'learning', label: 'Learning Hub', desc: 'Lessons with Guru, your AI tutor', icon: BookOpen, hue: 'violet' },
           { id: 'documents', label: 'Documents & certificates', desc: 'The right form and proofs', icon: FileBadge, hue: 'gold' },
+          { id: 'letters', label: 'Read my letter', desc: 'Any letter explained and read aloud', icon: MailOpen, hue: 'gold' },
         ],
       },
       {
@@ -179,8 +182,19 @@ export const AppMenu: React.FC<AppMenuProps> = ({ open, onClose, current, onNavi
     const rec = new SR();
     rec.lang = locale;
     rec.interimResults = true;
-    rec.onresult = (ev: any) => setQuery(Array.from(ev.results as ArrayLike<any>).map((r) => r[0].transcript).join(' '));
-    rec.onend = () => setListening(false);
+    rec.continuous = true;
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    rec.onresult = (ev: any) => {
+      const results = Array.from(ev.results as ArrayLike<any>);
+      const text = results.map((r) => r[0].transcript).join(' ').replace(/\s+/g, ' ').trim();
+      setQuery(text);
+      clearTimeout(quiet);
+      quiet = setTimeout(() => rec.stop(), pauseBeforeDone(text, !results[results.length - 1]?.isFinal));
+    };
+    rec.onend = () => {
+      clearTimeout(quiet);
+      setListening(false);
+    };
     rec.onerror = () => setListening(false);
     recRef.current = rec;
     setListening(true);

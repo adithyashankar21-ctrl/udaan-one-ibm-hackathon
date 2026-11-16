@@ -58,6 +58,18 @@ const ELIG = {
   unlikely: { tone: 'neutral' as const, label: 'May not match' },
 };
 
+
+/** Identity and legal papers (Voter ID, ration card, Aadhaar, PAN…) get their own section, ahead of certificates. */
+const LEGAL_DOCS = ['doc-voter', 'doc-ration', 'doc-aadhaar-new', 'doc-aadhaar-update', 'doc-pan', 'doc-passport', 'doc-birth', 'doc-learner-dl', 'doc-dl'];
+const FORM_GROUPS = [
+  ['legal', 'Identity & legal documents'],
+  ['loan', 'Loans'],
+  ['document', 'Certificates & cards'],
+  ['scheme', 'Government schemes'],
+] as const;
+const groupOf = (s: { schemeId: string; kind?: string }) => (LEGAL_DOCS.includes(s.schemeId) ? 'legal' : s.kind || 'scheme');
+const rankIn = (id: string) => (LEGAL_DOCS.includes(id) ? LEGAL_DOCS.indexOf(id) : 0);
+
 export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session, onSession, initialSchemeId, initialDraftId, initialValues, entryChannel = 'web', onEntryConsumed }) => {
   const t = getSmartApplyStrings(language);
   const pv = language === 'hi' ? PV.hi : PV.en;
@@ -541,15 +553,11 @@ export const SmartApplyPage: React.FC<Props> = ({ language, langConfig, session,
               ))}
             </div>
           ) : (
-            ([
-              ['loan', 'Loans'],
-              ['document', 'Documents & certificates'],
-              ['scheme', 'Government schemes'],
-            ] as const).map(([kind, heading]) => (
+            FORM_GROUPS.map(([kind, heading]) => (
             <div key={kind} className="mt-6">
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted">{heading}</h3>
             <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {schemes.filter((s) => (s.kind || 'scheme') === kind).map((s) => (
+              {schemes.filter((s) => groupOf(s) === kind).sort((a, b) => rankIn(a.schemeId) - rankIn(b.schemeId)).map((s) => (
                 <li key={s.schemeId}>
                   <button
                     onClick={() => start(s.schemeId)}

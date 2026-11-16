@@ -22,6 +22,8 @@ import {
   Store,
   Rocket,
   BookOpen,
+  MailOpen,
+  Users,
 } from 'lucide-react';
 import { BeneficiaryProfile, ChannelMode, Language, LanguageCode } from '../../types';
 import { getShellStrings } from '../../data/uiStrings';
@@ -74,6 +76,8 @@ export const HomePage: React.FC<HomePageProps> = ({ language, langConfig, profil
   const helpTiles: Array<{ id: ChannelMode; icon: React.ElementType; title: string; body: string; hue: keyof typeof HUE; onClick?: () => void }> = [
     { id: 'schemes', hue: 'saffron', icon: Landmark, title: t.help.scheme, body: 'Search in your own words, with official sources.' },
     { id: 'documents', hue: 'gold', icon: FileBadge, title: t.help.document, body: 'PAN, voter ID, passport, certificates — the right form and proofs.' },
+    { id: 'family', hue: 'saffron', icon: Users, title: 'Benefits for your whole family', body: 'Pensions, maternity, scholarships, health cover — checked for every person at home.' },
+    { id: 'letters', hue: 'gold', icon: MailOpen, title: 'Read my letter', body: 'Scan any official letter — we explain it, read it aloud and write your appeal.' },
     { id: 'enterprise', hue: 'teal', icon: Rocket, title: t.help.business, body: 'Loans, grants and a plan for your trade.' },
     { id: 'skills', hue: 'violet', icon: GraduationCap, title: t.help.jobs, body: 'Certified courses and job pathways.' },
     { id: 'learning', hue: 'violet', icon: BookOpen, title: 'Learn a skill with AI', body: 'Python, computers, trades — lessons and doubt solving.' },

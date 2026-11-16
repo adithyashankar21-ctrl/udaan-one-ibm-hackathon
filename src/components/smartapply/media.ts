@@ -3,6 +3,7 @@ import type { UploadFile } from '../../services/autofillApi';
 import { pickVoice } from '../learning/useSpeaker';
 import { aiService, speakWithBackupVoice } from '../../services/aiService';
 import { rememberHeard } from '../../services/heard';
+import { pauseBeforeDone } from '../../services/speechPause';
 
 const MAX_SIDE = 2200;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -111,7 +112,6 @@ function collect(results: ArrayLike<any>, from = 0) {
 }
 
 /** Silence after speech that ends an answer — long enough for a pause between "my name is…" and the name. */
-const END_OF_ANSWER_MS = 1200;
 
 /** Browser speech-to-text for answering questions by voice (no Gemini quota used). */
 export function useDictation(locale: string, onText: (text: string) => void) {
@@ -154,7 +154,7 @@ export function useDictation(locale: string, onText: (text: string) => void) {
     rec.onresult = (e: any) => {
       heard = collect(e.results);
       clearTimeout(quiet);
-      quiet = setTimeout(send, heard.live ? END_OF_ANSWER_MS * 2 : END_OF_ANSWER_MS);
+      quiet = setTimeout(send, pauseBeforeDone([heard.best, heard.live].filter(Boolean).join(' '), Boolean(heard.live)));
     };
     rec.onend = () => {
       send();
@@ -281,7 +281,7 @@ export function useVoiceTurns(locale: string) {
           // They are speaking: stop the start timer and end the answer after a pause instead
           clearTimeout(timer);
           clearTimeout(quiet);
-          quiet = setTimeout(() => finish(said()), heard.live ? END_OF_ANSWER_MS * 2 : END_OF_ANSWER_MS);
+          quiet = setTimeout(() => finish(said()), pauseBeforeDone([heard.best, heard.live].filter(Boolean).join(' '), Boolean(heard.live)));
         };
         rec.onerror = (e: any) => finish(e?.error === 'no-speech' ? '' : said());
         rec.onend = () => finish(said());

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, IndianRupee, Landmark, Mic, MicOff, ScanLine, Search, Sparkles } from 'lucide-react';
+import { AudioLines, CheckCircle2, ChevronDown, Circle, Compass, ExternalLink, FileBadge, Globe, IndianRupee, Landmark, Mic, MicOff, ScanLine, Search, Sparkles, Users } from 'lucide-react';
 import type { BeneficiaryProfile, ChannelMode, Language } from '../../types';
 import { DOCUMENT_CATEGORIES, DOCUMENT_SERVICES, type DocumentCategory, type DocumentService } from '../../data/documentServices';
 import { FORM_SCHEMA_MAP, requirementsFor, DOC_KINDS } from '../../data/autofillSchema';
@@ -11,11 +11,12 @@ import { MyCertificates } from '../learning/Certificates';
 import type { Certificate } from '../../services/learnApi';
 
 /** Switch between the parts of Explore: schemes, loans and official documents. */
-export const ExploreTabs: React.FC<{ current: 'schemes' | 'loans' | 'documents'; onNavigate?: (m: ChannelMode) => void }> = ({ current, onNavigate }) =>
+export const ExploreTabs: React.FC<{ current: 'schemes' | 'family' | 'loans' | 'documents'; onNavigate?: (m: ChannelMode) => void }> = ({ current, onNavigate }) =>
   onNavigate ? (
     <div role="tablist" aria-label="Explore" className="inline-flex max-w-full overflow-x-auto rounded-2xl border border-line bg-white p-1">
       {[
         { id: 'schemes' as const, label: 'Government schemes', icon: Landmark },
+        { id: 'family' as const, label: 'Whole family', icon: Users },
         { id: 'loans' as const, label: 'Loans', icon: IndianRupee },
         { id: 'documents' as const, label: 'Documents & certificates', icon: FileBadge },
       ].map((tab) => (

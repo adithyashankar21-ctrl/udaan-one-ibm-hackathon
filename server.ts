@@ -10,6 +10,7 @@ import { createLearnRouter } from './server/learn/router';
 import { createTranslateRouter, createTranslator } from './server/i18n/router';
 import { createVoiceRouter } from './server/voice/router';
 import { createLoansRouter } from './server/loans/router';
+import { createHelpRouter } from './server/help/router';
 import { offlineReply, scriptLanguage, toLanguageCode } from './src/data/languageTools';
 import { detectLearnIntent } from './server/learn/intent';
 import { detectRoadmapIntent } from './server/learn/roadmapIntent';
@@ -135,6 +136,7 @@ async function generateWithFallback(
 app.use('/api/autofill', createAutofillRouter(generateWithFallback));
 app.use('/api/learn', createLearnRouter(generateWithFallback));
 app.use('/api/loans', createLoansRouter(generateWithFallback));
+app.use('/api/help', createHelpRouter(generateWithFallback));
 const translate = createTranslator(generateWithFallback);
 app.use('/api/i18n', createTranslateRouter(translate));
 // The helpline on a real phone line (Twilio)

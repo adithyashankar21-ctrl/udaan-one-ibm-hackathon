@@ -47,6 +47,7 @@ import {
 } from './store';
 import type { Candidate, DocumentRecord, Draft, FieldRecord, SessionData, SourceKind } from './types';
 import { hasNonLatin, isValidAadhaar, normalise, scrubAadhaar } from './validate';
+import { cleanHousehold } from '../../src/data/familySchemes';
 
 export const CONSENT_VERSION = '2026-10-17';
 const COOKIE = 'udaan_sid';
@@ -910,6 +911,20 @@ export function createAutofillRouter(generate: Generate) {
       session.roadmaps = (session.roadmaps || []).filter((r) => r.id !== req.params.id);
       saveSession(session);
       res.json({ roadmaps: session.roadmaps });
+    })
+  );
+
+  router.get(
+    '/household',
+    withSession((_req, res, session) => res.json({ household: session.household || null }))
+  );
+
+  router.post(
+    '/household',
+    withSession((req, res, session) => {
+      session.household = cleanHousehold(req.body?.household);
+      saveSession(session);
+      res.json({ household: session.household });
     })
   );
 

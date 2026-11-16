@@ -27,6 +27,7 @@ import { aiService, offlineReply } from '../services/aiService';
 import { scriptLanguage, toAsciiDigits, toLanguageCode } from '../data/languageTools';
 import { APPLY_INTENT_EVENT, type ApplyIntentDetail } from '../services/autofillApi';
 import { isApplicationRequest, useIvrApplication } from './smartapply/useIvrApplication';
+import { pauseBeforeDone } from '../services/speechPause';
 
 interface IvrHelplineProps {
   currentLanguage: LanguageCode;
@@ -220,7 +221,6 @@ const IVR_LANGUAGES: Record<string, LanguageBranch> = {
 };
 
 // How long the caller must stay silent before their speech is sent to the agent
-const CALLER_SILENCE_MS = 2000;
 
 const getInitialLangKey = (lang?: string): string => {
   if (!lang) return '1';
@@ -617,14 +617,14 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
 
   // Send what the caller said only after they have been silent for a while,
   // so natural pauses between phrases don't cut them off mid-sentence.
-  const armSilenceCommit = () => {
+  const armSilenceCommit = (stillHearing: boolean) => {
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
     }
     silenceTimeoutRef.current = setTimeout(() => {
       silenceTimeoutRef.current = null;
       commitPendingSpeech();
-    }, CALLER_SILENCE_MS);
+    }, pauseBeforeDone(pendingSpeechRef.current, stillHearing));
   };
 
   const commitPendingSpeech = () => {
@@ -696,7 +696,7 @@ export const IvrHelpline: React.FC<IvrHelplineProps> = ({
 
         pendingSpeechRef.current = fullText;
         setInterimTranscript(fullText);
-        armSilenceCommit();
+        armSilenceCommit(!event.results[event.results.length - 1]?.isFinal);
       };
 
       recognition.onerror = (event: any) => {
